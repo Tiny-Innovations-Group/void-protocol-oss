@@ -1,6 +1,6 @@
 # Void Protocol — End-to-End Flow (v2.1)
 
-> 🛰️ VOID PROTOCOL v2.0 | Tiny Innovation Group Ltd
+> 🛰️ VOID PROTOCOL v2.1 | Tiny Innovation Group Ltd
 > 
 > Authority: Tiny Innovation Group Ltd
 > 
@@ -183,10 +183,10 @@ The following table summarizes the updated packet sizes and time-box constraints
 
 ## Technical Links
 
-* [Handshake Spec v2.1 (AOS/Session)]()
-* [Protocol Spec v2.1 (A & B)]()
-* [Acknowledgement Spec v2.1 (Ack & Tunnel)]()
-* [Receipt Spec v2.1 (C & D)]()
+* [Handshake Spec v2.1 (AOS/Session)](./Handshake-spec.md)
+* [Protocol Spec v2.1 (A & B)](./Protocol-spec.md)
+* [Acknowledgement Spec v2.1 (Ack & Tunnel)](./Acknowledgment-spec.md)
+* [Receipt Spec v2.1 (C & D)](./Receipt-spec.md)
 
 ---
 

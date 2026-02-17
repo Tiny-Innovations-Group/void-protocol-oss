@@ -1,6 +1,6 @@
 # Handshake Protocol Specification (v2.1)
 
-> 🛰️ VOID PROTOCOL v2.0 | Tiny Innovation Group Ltd
+> 🛰️ VOID PROTOCOL v2.1 | Tiny Innovation Group Ltd
 >
 > Authority: Tiny Innovation Group Ltd
 >

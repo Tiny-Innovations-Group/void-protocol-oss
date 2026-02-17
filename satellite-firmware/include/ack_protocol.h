@@ -1,5 +1,5 @@
 /*-------------------------------------------------------------------------
- * 🛰️ VOID PROTOCOL v2.0 | Tiny Innovation Group Ltd
+ * 🛰️ VOID PROTOCOL v2.1 | Tiny Innovation Group Ltd
  * -------------------------------------------------------------------------
  * Authority: Tiny Innovation Group Ltd
  * License:   Apache 2.0
