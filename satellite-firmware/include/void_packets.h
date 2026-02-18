@@ -25,7 +25,7 @@
  * @brief Standard CCSDS Primary Header (6 Bytes)
  * @note  NETWORK BYTE ORDER (Big-Endian)
  */
-typedef struct {
+typedef struct __attribute__((packed)) {
     uint8_t  ver_type_sec;      // Version(3) | Type(1) | SecHead(1) | APID_Hi(3)
     uint8_t  apid_lo;           // APID_Lo(8)
     uint8_t  seq_flags;         // Flags(2) | Count_Hi(6)
@@ -33,18 +33,20 @@ typedef struct {
     uint16_t packet_len;        // Total Length - 1
 } VoidHeader_t;
 
-static_assert(sizeof(VoidHeader_t) == 6, "VoidHeader_t size mismatch");
+static_assert(sizeof(VoidHeader_t) == SIZE_VOID_HEADER, "VoidHeader_t size mismatch");
 
 /* --------------------------------------------------------------------------
  * PHASE 1: HANDSHAKE (Packet H)
  * -------------------------------------------------------------------------- */
 
+
+ 
 /**
  * @brief Packet H: Ephemeral Key Exchange
  * @size  112 Bytes
  * @cite  Handshake-spec.md
  */
-typedef struct {
+typedef struct __attribute__((packed)) {
     VoidHeader_t header;        // 00-05: Big-Endian
     uint16_t     session_ttl;   // 06-07: Little-Endian (Alignment + Logic)
     uint64_t     timestamp;     // 08-15: Little-Endian (Unix Epoch)
@@ -63,7 +65,7 @@ static_assert(sizeof(PacketH_t) == SIZE_PACKET_H, "PacketH_t size mismatch");
  * @size  68 Bytes
  * @cite  Protocol-spec.md
  */
-typedef struct {
+typedef struct __attribute__((packed)) {
     VoidHeader_t header;        // 00-05: Big-Endian
     uint64_t     epoch_ts;      // 06-13: Little-Endian
     double       pos_vec[3];    // 14-37: Little-Endian (IEEE 754 f64)
@@ -85,7 +87,7 @@ static_assert(sizeof(PacketA_t) == SIZE_PACKET_A, "PacketA_t size mismatch");
  * @size  176 Bytes
  * @cite  Protocol-spec.md
  */
-typedef struct {
+typedef struct __attribute__((packed)) {
     VoidHeader_t header;        // 00-05: Big-Endian
     uint64_t     epoch_ts;      // 06-13: Little-Endian
     double       pos_vec[3];    // 14-37: Little-Endian
@@ -107,7 +109,7 @@ static_assert(sizeof(PacketB_t) == SIZE_PACKET_B, "PacketB_t size mismatch");
  * @size  12 Bytes
  * @cite  Acknowledgement-spec.md
  */
-typedef struct {
+typedef struct __attribute__((packed)) {
     uint16_t azimuth;
     uint16_t elevation;
     uint32_t frequency;
@@ -120,7 +122,7 @@ typedef struct {
  * @note  This is the struct recovered after decrypting PacketAck_t::enc_tunnel
  * @cite  Acknowledgment-spec.md [Section C]
  */
-typedef struct {
+typedef struct __attribute__((packed)) {
     VoidHeader_t header;        // 00-05: Big-Endian (APID=Sat A)
     uint8_t      _pad_a[2];     // 06-07: 64-bit Alignment Pad
     uint64_t     block_nonce;   // 08-15: Little-Endian (L2 Block Height)
@@ -137,7 +139,7 @@ static_assert(sizeof(TunnelData_t) == SIZE_TUNNEL_DATA, "TunnelData_t size misma
  * @size  120 Bytes
  * @cite  Acknowledgement-spec.md
  */
-typedef struct {
+typedef struct __attribute__((packed)) {
     VoidHeader_t header;        // 00-05: Big-Endian
     uint16_t     _pad_a;        // 06-07: Alignment
     uint32_t     target_tx_id;  // 08-11: Little-Endian (Nonce Match)
@@ -160,7 +162,7 @@ static_assert(sizeof(PacketAck_t) == SIZE_PACKET_ACK, "PacketAck_t size mismatch
  * @size  104 Bytes
  * @cite  Receipt-spec.md
  */
-typedef struct {
+typedef struct __attribute__((packed)) {
     VoidHeader_t header;        // 00-05: Big-Endian
     uint16_t     _pad_head;     // 06-07: Alignment
     uint64_t     exec_time;     // 08-15: Little-Endian
@@ -179,7 +181,7 @@ static_assert(sizeof(PacketC_t) == SIZE_PACKET_C, "PacketC_t size mismatch");
  * @size  128 Bytes
  * @cite  Receipt-spec.md
  */
-typedef struct {
+typedef struct __attribute__((packed)) {
     VoidHeader_t header;        // 00-05: Big-Endian
     uint16_t     _pad_head;     // 06-07: Alignment
     uint64_t     downlink_ts;   // 08-15: Little-Endian

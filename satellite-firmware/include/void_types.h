@@ -33,6 +33,7 @@
 #define SIZE_PACKET_D           128     // Delivery
 #define SIZE_PACKET_ACK         120     // Acknowledgement
 #define SIZE_TUNNEL_DATA        88      // Tunnel Data (from PacketAck_t::enc_tunnel)
+#define SIZE_VOID_HEADER         6       // CCSDS Primary Header
 
 /* --- CCSDS APID MASKS --- */
 #define CCSDS_VER_MASK          0xE0    // Version 1 (bits 0-2)
