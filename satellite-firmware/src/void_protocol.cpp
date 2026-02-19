@@ -10,6 +10,7 @@
  * -------------------------------------------------------------------------*/
 #include "void_protocol.h"
 #include "void_config.h"
+#include "security_manager.h"
 
 VoidProtocol Void;
 
@@ -96,3 +97,23 @@ uint32_t VoidProtocol::calculateCRC(const uint8_t *data, size_t len)
     }
     return crc;
 }
+
+#ifdef DEMO
+void VoidProtocol::pollDemoTriggers() {
+    // SIMULATE USB GROUND CONNECTION
+    // In production, this is replaced by a formal Ground Station command parser or hardware interrupt.
+    if (Serial.available() > 0) {
+        char cmd = Serial.read();
+        if (cmd == 'H' || cmd == 'h') {
+            updateDisplay("AUTH", "Generating Keys...");
+            
+            static PacketH_t handshake_pkt;
+            Security.prepareHandshake(handshake_pkt, VOID_SESSION_TTL_DEF);
+            
+            Serial.print("HANDSHAKE_TX:");
+            hexDump((uint8_t*)&handshake_pkt, SIZE_PACKET_H);
+            updateDisplay("AUTH", "Handshake Sent");
+        }
+    }
+}
+#endif

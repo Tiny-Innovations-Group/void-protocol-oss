@@ -30,6 +30,10 @@ public:
     void updateDisplay(String status, String subtext);
     void hexDump(uint8_t* data, size_t len);
     uint32_t calculateCRC(uint8_t* data, size_t len);
+
+    #ifdef DEMO
+    void pollDemoTriggers();
+    #endif
 };
 
 extern VoidProtocol Void; // Global instance
