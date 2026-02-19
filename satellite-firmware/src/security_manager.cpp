@@ -45,7 +45,7 @@ void SecurityManager::prepareHandshake(PacketH_t& pkt, uint16_t ttl_seconds) {
     pkt.header.seq_count_lo = 0x00; // Counter (Mock)
 
     // Packet Length: Swap to Big-Endian
-    uint16_t raw_len = sizeof(SIZE_VOID_HEADER) - 1;
+    uint16_t raw_len = SIZE_PACKET_H - 1;
     pkt.header.packet_len = (raw_len >> 8) | (raw_len << 8);
 
     // 4. Fill Data
@@ -68,7 +68,8 @@ void SecurityManager::prepareHandshake(PacketH_t& pkt, uint16_t ttl_seconds) {
 // --- PHASE 2: RESPONSE (Ground -> Sat B) ---
 bool SecurityManager::processHandshakeResponse(const PacketH_t& pkt_in) {
     // 1. Verify Ground Signature (Validation)
-    // For demo, we assume Ground is trusted if sig validates.
+    // For demo, we assume Ground is trusted if sig validates.  
+    // For demo, we skip checking the Ground's signature against a root CA.
     // In Prod, we check pkt_in.signature against a stored Ground Public Key.
     
     // 2. DERIVE SESSION KEY (ECDH)

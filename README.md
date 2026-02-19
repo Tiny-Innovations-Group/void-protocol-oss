@@ -1,82 +1,96 @@
-# Void Protocol v2.1
+# 🛰️ Void Protocol (v2.1)
 
-> 🛰️ VOID PROTOCOL v2.1 | Tiny Innovation Group Ltd
+> **Authority:** Tiny Innovation Group Ltd  
 > 
-> Authority: Tiny Innovation Group Ltd
+> **License:** Apache 2.0  
 > 
-> License: Apache 2.0
+> **Status:** Authenticated Clean Room Spec  
 > 
-> Status: Authenticated Clean Room Spec
+> **Compliance:** NSA/CISA Memory Safety Guidelines & SEI CERT C++  
 
-Void Protocol v2.1 is a **Defense-Grade** settlement layer designed for **Machine-to-Machine (M2M)** transactions between orbital assets. It facilitates trustless commerce (data, fuel, or compute) using an encrypted store-and-forward architecture with **Perfect Forward Secrecy (PFS)**, optimized for embedded satellite hardware like the **ESP32-S3** (Heltec V3).
+Void Protocol is a **Defense-Grade, Layer 2 Machine-to-Machine (M2M) settlement protocol** designed for orbital, remote, and air-gapped assets. It facilitates trustless commerce (data, fuel, compute) using an asynchronous "Store-and-Forward" architecture with **Perfect Forward Secrecy (PFS)**. 
+
+This repository contains the **Open Source Thick Client** (Device-Side Core), optimized for embedded hardware like the ESP32-S3 (Heltec V3).
+
+---
+
+## 🛡️ Engineering Standard: "Clean C++"
+
+To meet the rigorous demands of aerospace and defense environments, this codebase strictly adheres to **NSA/CISA Memory Safety Guidelines** and **SEI CERT C++** standards. 
+
+* **Zero-Heap Allocation:** `malloc`, `new`, and `std::string` are strictly banned. All packet buffers and state managers use deterministic, static allocation to mathematically eliminate heap fragmentation.
+* **Zero-Copy Deserialization:** Incoming radio payloads are never copied. They are parsed directly from static buffers using strict APID header peeking and exact-length validation before pointer casting.
+* **Strict Type & Endian Safety:** Over-The-Air (OTA) structures are forced to byte-alignment (`__attribute__((packed))`). CCSDS Headers are Big-Endian; Payloads are Little-Endian.
+* **Compiler Enforced:** The `platformio.ini` environment enforces `-Werror`, `-Wvla`, and static analysis (Clang-Tidy) to reject non-compliant code at build time.
 
 ---
 
 ## 🛠️ System Architecture
 
-The protocol operates across four distinct phases to ensure settlement finality within a **60-second window**:
+The protocol operates asynchronously to ensure settlement finality across disrupted networks:
 
-1. **Handshake (AOS):** Upon Acquisition of Signal, Sat B and Ground perform an ephemeral **ECDH Key Exchange** to establish a forward-secure session.
+1. **Handshake (AOS):** Upon Acquisition of Signal, satellites perform an ephemeral **X25519 ECDH Key Exchange** to establish a forward-secure session.
 2. **Sat A (Seller):** Generates service invoices and broadcasts them via LoRa/S-Band.
-3. **Sat B (Buyer/Mule):** Acts as a secure courier, encapsulating payment intent and signing transactions using **Physical Unclonable Functions (PUF)**.
-4. **Ground Station:** The L2 bridge authority that validates signatures, executes smart contracts, and issues the encrypted "Unlock" command.
+3. **Sat B (Buyer/Mule):** Acts as a secure courier, encapsulating payment intent and signing transactions using hardware Identity Keys (Ed25519 / PUF).
+4. **Ground Station:** The L2 authority that validates signatures, batches settlements, and issues the encrypted "Unlock" command via ChaCha20.
 
----
-
-## 🔒 Security & Performance
-
-* **Defense-Grade Stack:** Utilizes **X25519** for ephemeral key exchange, **Ed25519** for identity signatures, and **ChaCha20** for stream encryption.
-* **Forward Secrecy:** Session keys are destroyed after every pass, ensuring that physical capture of a device cannot compromise historical transaction logs.
-* **Hybrid Endianness:** CCSDS Headers are **Big-Endian** for ground network compatibility, while payloads are **Little-Endian** for native MCU performance.
-* **Cycle Optimization:** All packet structures are aligned to **64-bit machine boundaries** (Rule of 8) to prevent memory access penalties on ARM and ESP32 architectures.
+*For full flow details, see [ARCHITECTURE.md](./ARCHITECTURE.md).*
 
 ---
 
 ## 📦 Packet Overview
 
 | Packet | Name | Size | Function |
-| --- | --- | --- | --- |
-| **Packet H** | **Handshake** | **112B** | **Ephemeral Key Exchange (ECDH)** |
+| :--- | :--- | :--- | :--- |
+| **Packet H** | **Handshake** | 112B | Ephemeral Key Exchange (ECDH) & TTL |
 | **Packet A** | Invoice | 68B | Public service offer from Sat A |
 | **Packet B** | Payment | 176B | Encapsulated intent signed by Sat B |
-| **ACK** | Acknowledgment | 120B | Ground-to-Sat unlock command and relay instructions |
+| **ACK** | Acknowledgment | 120B | Ground-to-Sat encrypted unlock command |
 | **Packet C** | Receipt | 104B | Proof-of-Execution signed by Sat A |
-| **Packet D** | Delivery | 128B | Final delivery of receipt to Ground |
+| **Packet D** | Delivery | 128B | Final delivery of receipt to Ground Ledger |
 
 ---
 
-## 🚀 Development with PlatformIO
+## 🚀 Quick Start (PlatformIO)
 
-This project is structured for **PlatformIO** and optimized for the **Heltec WiFi LoRa 32 V3** (ESP32-S3). To maintain "Clean Room" integrity, ensure your environment adheres to the following specification:
+This project requires **PlatformIO** and is pre-configured for the **Heltec WiFi LoRa 32 V3**.
 
-### Hardware & Framework
+```bash
+# 1. Clone the repository
+git clone [https://github.com/Tiny-Innovations-Group/void-protocol-oss.git](https://github.com/Tiny-Innovations-Group/void-protocol-oss.git)
+cd void-protocol-oss
 
-* **MCU:** ESP32-S3 (via `heltec_wifi_lora_32_V3` board profile)
-* **Framework:** Arduino
-* **LoRa Region:** EU868
-* **Monitor Speed:** 115200 with exception decoding enabled
+# 2. Build the firmware (Strict compiler flags enabled)
+pio run -e heltec_wifi_lora_32_V3
 
-### Dependencies
+# 3. Upload to the Heltec board
+pio run -e heltec_wifi_lora_32_V3 -t upload
 
-* **Sodium:** Used for ChaCha20, SHA-256, Ed25519, and X25519 primitives.
-* **RadioLib:** Manages LoRa hardware abstractions.
-* **SSD1306 Driver:** For local telemetry display on the Heltec OLED.
+# 4. Monitor serial output (115200 baud)
+pio device monitor -b 115200
 
-### Directory Structure
-
-* `/include`: Protocol headers (`Protocol-spec.h`, `Handshake-spec.h`, `Acknowledgment-spec.h`, `Receipt-spec.h`).
-* `/src`: Implementation of the `VoidController` and `SecurityManager`.
-* `/docs`: Finalized Markdown specifications for the protocol segments.
+```
 
 ---
 
-## 🖋️ Contribution Policy
-[Contribution Policy](./CONTRIBUTING.md)
+## 📂 Repository Structure
+
+* `include/` - NSA-compliant packed structs (`void_packets.h`), constants (`void_types.h`), and headers.
+* `src/` - Core logic (`void_protocol.cpp`, `security_manager.cpp`, `buyer.cpp`, `seller.cpp`).
+* `platformio.ini` - Build environment and strict GCC/Clang rules.
+* `.cursorrules` - AI assistant guardrails enforcing C++ memory safety.
 
 ---
 
-[END OF SPECIFICATION]
+## 📚 Documentation & Governance
 
-Verified for 32/64-bit cycle optimization.
+Please review the following documents before interacting with or contributing to this repository:
 
-© 2026 Tiny Innovation Group Ltd.
+* 🏛️ **[Commercial Boundaries (GOVERNANCE.md)](./GOVERNANCE.md)** - Details our Open Core model and Enterprise feature delineations.
+* 🔒 **[Security Policy (SECURITY.md)](./SECURITY.md)** - Threat model and vulnerability disclosure (PGP).
+* 📝 **[Contribution Guidelines (CONTRIBUTING.md)](./CONTRIBUTING.md)** - Mandatory C++ coding standards.
+* 📜 **[License (LICENSE)](./LICENSE)** - Apache 2.0.
+
+---
+
+*© 2026 Tiny Innovation Group Ltd.*

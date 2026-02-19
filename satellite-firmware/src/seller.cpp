@@ -30,7 +30,7 @@ void runSellerLoop() {
         invoice.header.seq_count_lo = 0x00; // Counter (Mock)
 
         // Packet Length: 16-bit Big Endian (Total Length - 1)
-        uint16_t raw_len = sizeof(PacketA_t) - 1;
+        uint16_t raw_len = SIZE_PACKET_A - 1;
         invoice.header.packet_len = (raw_len >> 8) | (raw_len << 8);
 
         // 2. PAYLOAD GENERATION (Little-Endian / Native ESP32)
