@@ -11,6 +11,7 @@
 
 #include "security_manager.h"
 #include <sodium.h>
+#include <cstring>
 
 SecurityManager Security;
 
@@ -42,14 +43,14 @@ bool SecurityManager::begin() {
 
 
 // --- PHASE 2: HANDSHAKE (Sat B -> Ground) ---
-void SecurityManager::prepareHandshake(PacketH_t& pkt, uint16_t ttl_seconds) {
+void SecurityManager::prepareHandshake(PacketH_t& pkt, uint16_t ttl_seconds, uint64_t current_time_ms) {
     // 1. Generate Ephemeral X25519 Keypair (The "Throwaway" Keys)
     crypto_box_keypair(_eph_pub, _eph_priv);
 
     // 2. Set State
     _state = SESSION_HANDSHAKE_INIT;
     _session_ttl = ttl_seconds;
-    _session_start_ts = millis();
+    _session_start_ts = current_time_ms;
 
     // 3. Populate Packet Header
     pkt.header.ver_type_sec = 0x18; // Version 0, Type 1, Sec 1, APID (Upper)
@@ -68,7 +69,7 @@ void SecurityManager::prepareHandshake(PacketH_t& pkt, uint16_t ttl_seconds) {
 
     // 4. Fill Data
     pkt.session_ttl = ttl_seconds;
-    pkt.timestamp = millis(); // Demo: Use millis. Prod: Use GPS Epoch.
+    pkt.timestamp = current_time_ms; // Demo: Use millis. Prod: Use GPS Epoch.
     memcpy(pkt.eph_pub_key, _eph_pub, 32);
 
     // 5. SIGNATURE (Identity binds the Ephemeral Key)
@@ -119,7 +120,9 @@ void SecurityManager::encryptPacketB(PacketB_t& pkt, const uint8_t* payload_in, 
     
     // Copy Nonce to packet (4 bytes used in struct, usually extended in prod)
     // For MVP struct `nonce` is u32, so we use first 4 bytes
-    memcpy(&pkt.nonce, nonce, 4); 
+    uint32_t safe_nonce;
+    memcpy(&safe_nonce, nonce, 4); 
+    pkt.nonce = safe_nonce;
 
     // 2. Encrypt (ChaCha20-Poly1305 or XChaCha20)
     // We use ChaCha20 stream (no auth tag here, as Packet B has Outer Sig)
@@ -137,10 +140,10 @@ void SecurityManager::encryptPacketB(PacketB_t& pkt, const uint8_t* payload_in, 
 }
 
 // --- UTILITIES ---
-bool SecurityManager::isSessionActive() {
+bool SecurityManager::isSessionActive(uint64_t current_time_ms) {
     if (_state != SESSION_ACTIVE) return false;
     // Check TTL
-    if ((millis() - _session_start_ts) > (_session_ttl * 1000)) {
+    if ((current_time_ms - _session_start_ts) > (_session_ttl * 1000)) {
         wipeSession(); // Time's up!
         return false;
     }

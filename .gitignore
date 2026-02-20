@@ -180,3 +180,17 @@ __marimo__/
 .pio
 .vscode
 env_*
+
+# CMake build directories
+build/
+cmake-build-*/
+out/
+
+# Compiled Executables
+ground_station
+*.exe
+*.out
+*.app
+
+# OS generated files
+.DS_Store
