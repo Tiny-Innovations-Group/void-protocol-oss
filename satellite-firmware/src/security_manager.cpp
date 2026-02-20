@@ -15,18 +15,30 @@ SecurityManager Security;
 
 SecurityManager::SecurityManager() : _state(SESSION_IDLE) {}
 
-bool SecurityManager::begin() {
-    // 1. Init Sodium (Critical)
-    if (sodium_init() < 0) {
-        return false;
-    }
 
-    // 2. Load Identity (Mock for Demo: Generate random Ed25519 Identity)
-    // In Prod, this reads from NVS or ATECC608
-    crypto_sign_keypair(_identity_pub, _identity_priv);
+bool SecurityManager::begin() {
+    if (sodium_init() < 0) return false;
+
+    // Simulate Unique Factory Injected PUFs based on Role
+    const char* env_key;
+    #ifdef ROLE_SELLER
+        // Unique silicon simulation for Sat A !!FAKE KEY FOR DEMO ONLY!!
+        env_key = "Q9p4M&JjEUrmf3fW$i5AfWkWNREpEN8OYHXUg6F0^R9O2nm5EoQor%mtlcVCyLlC"; 
+    #else
+        // Unique silicon simulation for Sat B !!FAKE KEY FOR DEMO ONLY!!
+        env_key = "!1V2#E!UDzTeUjEvqYLbHt8BFnsnlWsIQPrl44zmPZZ8bSkqwng&JPQJQ2QHZVIx";
+    #endif
     
+    uint8_t seed[crypto_sign_SEEDBYTES];
+    crypto_hash_sha256(seed, reinterpret_cast<const uint8_t*>(env_key), strlen(env_key));
+
+    crypto_sign_seed_keypair(_identity_pub, _identity_priv, seed);
+    sodium_memzero(seed, sizeof(seed));
+
     return true;
 }
+
+
 
 // --- PHASE 2: HANDSHAKE (Sat B -> Ground) ---
 void SecurityManager::prepareHandshake(PacketH_t& pkt, uint16_t ttl_seconds) {
@@ -56,7 +68,8 @@ void SecurityManager::prepareHandshake(PacketH_t& pkt, uint16_t ttl_seconds) {
     // 5. SIGNATURE (Identity binds the Ephemeral Key)
     // Sign bytes 0 to 47 (Header + TTL + TS + PubKey)
     unsigned long long sig_len;
-    crypto_sign_detached(pkt.signature, &sig_len, (uint8_t*)&pkt, 48, _identity_priv);
+    // crypto_sign_detached(pkt.signature, &sig_len, (uint8_t*)&pkt, 48, _identity_priv);
+    crypto_sign_detached(pkt.signature, &sig_len, reinterpret_cast<uint8_t*>(&pkt), 48, _identity_priv);
     // Defensive: Ensure signature length is as expected (Ed25519 = 64 bytes)
     if (sig_len != 64) {
         // Handle error: signature length mismatch (could log, assert, or set error state)
@@ -109,7 +122,8 @@ void SecurityManager::encryptPacketB(PacketB_t& pkt, const uint8_t* payload_in, 
     // 3. SIGN THE OUTER PACKET (PUF)
     // Sign everything from Header to Nonce (Offset 0 to 107)
     unsigned long long sig_len;
-    crypto_sign_detached(pkt.signature, &sig_len, (uint8_t*)&pkt, 108, _identity_priv);
+    // crypto_sign_detached(pkt.signature, &sig_len, (uint8_t*)&pkt, 108, _identity_priv);
+    crypto_sign_detached(pkt.signature, &sig_len, reinterpret_cast<uint8_t*>(&pkt), 108, _identity_priv);
     // Defensive: Ensure signature length is as expected (Ed25519 = 64 bytes)
     if (sig_len != 64) {
         while (1) {}

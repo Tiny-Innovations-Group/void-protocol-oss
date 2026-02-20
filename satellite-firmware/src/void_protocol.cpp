@@ -111,7 +111,8 @@ void VoidProtocol::pollDemoTriggers() {
             Security.prepareHandshake(handshake_pkt, VOID_SESSION_TTL_DEF);
             
             Serial.print("HANDSHAKE_TX:");
-            hexDump((uint8_t*)&handshake_pkt, SIZE_PACKET_H);
+            // hexDump((uint8_t*)&handshake_pkt, SIZE_PACKET_H);
+            hexDump(reinterpret_cast<uint8_t*>(&handshake_pkt), SIZE_PACKET_H);
             updateDisplay("AUTH", "Handshake Sent");
         }
     }
