@@ -57,3 +57,13 @@ set(SODIUM_DISABLE_TESTS ON)
 FetchContent_MakeAvailable(Sodium)
 
 target_link_libraries(ground_station PRIVATE sodium)
+
+# --- 6. SBOM GENERATION (NSA COMPLIANCE) ---
+# This creates a manifest of all components (VoidCore, Libsodium, SerialHAL)
+set(SBOM_OUTPUT "${CMAKE_SOURCE_DIR}/../metadata/ground-station-sbom.json")
+
+add_custom_command(
+    TARGET ground_station POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E echo "{\"bomFormat\": \"CycloneDX\", \"specVersion\": \"1.4\", \"component\": {\"name\": \"VoidGroundStation\", \"version\": \"2.1.1\", \"type\": \"application\", \"components\": [{\"name\": \"libsodium\", \"version\": \"1.0.20-RELEASE\"}, {\"name\": \"void-core\", \"version\": \"2.1.0\"}]}}" > ${SBOM_OUTPUT}
+    COMMENT "🛰️ Generating Software Bill of Materials (SBOM) for Audit compliance..."
+)

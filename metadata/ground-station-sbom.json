@@ -1,0 +1,1 @@
+bomFormat: CycloneDX  specVersion: 1.4  component: name: VoidGroundStation  component:  version: 2.1.1  component:  type: application  component:  components: [name: libsodium  component:  components: [ version: 1.0.20-RELEASE  component:  name: void-core]  component:   version: 2.1.0]
