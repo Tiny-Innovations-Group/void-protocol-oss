@@ -11,6 +11,7 @@ set(CMAKE_CXX_EXTENSIONS OFF) # Disable GNU extensions for strict portability
 add_executable(ground_station
     src/main.cpp
     src/bouncer.cpp
+    src/serial_hal.cpp
     ${CMAKE_SOURCE_DIR}/../void-core/src/security_manager.cpp   # <--- ADD THIS LINE
 )
 
@@ -19,6 +20,7 @@ add_executable(ground_station
 target_include_directories(ground_station PRIVATE
     ${CMAKE_SOURCE_DIR}/../void-core/include
     ${CMAKE_SOURCE_DIR}/src
+    ${CMAKE_SOURCE_DIR}/include
 )
 
 # --- 4. NSA / SEI CERT C++ COMPILER RULES ---

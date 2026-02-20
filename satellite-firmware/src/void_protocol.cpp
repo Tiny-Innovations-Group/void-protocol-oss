@@ -132,7 +132,7 @@ void VoidProtocol::pollDemoTriggers() {
             updateDisplay("AUTH", "Generating Keys...");
             
             static PacketH_t handshake_pkt;
-            Security.prepareHandshake(handshake_pkt, VOID_SESSION_TTL_DEF);
+            Security.prepareHandshake(handshake_pkt, VOID_SESSION_TTL_DEF, millis());
             
             Serial.print("HANDSHAKE_TX:");
             // hexDump((uint8_t*)&handshake_pkt, SIZE_PACKET_H);
