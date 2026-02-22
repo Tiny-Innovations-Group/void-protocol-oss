@@ -8,6 +8,8 @@
 > 
 > **Compliance:** NSA/CISA Memory Safety Guidelines & SEI CERT C++  
 
+**⚠️ AUDIT STATUS: PRE-CERTIFICATION** This codebase is engineered to meet **NSA/CISA Memory Safety** and **SEI CERT C++** standards. However, it is currently in **Alpha/Pre-Audit** development. It has not yet undergone formal third-party certification. **Not for use in live flight-critical systems.**
+
 Void Protocol is a **Defense-Grade, Layer 2 Machine-to-Machine (M2M) settlement protocol** designed for orbital, remote, and air-gapped assets. It facilitates trustless commerce (data, fuel, compute) using an asynchronous "Store-and-Forward" architecture with **Perfect Forward Secrecy (PFS)**. 
 
 This repository contains the **Open Source Thick Client** (Device-Side Core), optimized for embedded hardware like the ESP32-S3 (Heltec V3).
