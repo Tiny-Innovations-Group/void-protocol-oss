@@ -12,8 +12,14 @@ add_executable(ground_station
     src/main.cpp
     src/bouncer.cpp
     src/serial_hal.cpp
+    src/gateway_client.cpp
     ${CMAKE_SOURCE_DIR}/../void-core/src/security_manager.cpp   # <--- ADD THIS LINE
 )
+
+
+if(WIN32)
+    target_link_libraries(ground_station PRIVATE ws2_32)
+endif()
 
 # --- 3. THE BRIDGE (INCLUDE DIRECTORIES) ---
 # Tell CMake how to legally look outside its folder to find the math and structs
