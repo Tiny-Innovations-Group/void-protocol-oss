@@ -101,10 +101,10 @@ _Ensures compatibility with commercial ground stations (AWS/KSAT)._
 ### 4.1 APID Naming Domain & Global Identity Extension
 The standard CCSDS APID is restricted to an 11-bit field, yielding a maximum of 2,048 unique identifiers per naming domain. To support a globally scaled Decentralized Physical Infrastructure Network (DePIN) across multiple independent fleets, the VOID Protocol strictly adheres to the CCSDS extension guidelines.
 
-As per **CCSDS 133.0-B-2 (Space Packet Protocol, Section 2.1.1)**:
+As per **CCSDS 133.0-B-2 (Space Packet Protocol, Section 2.1.1)** [^1]:
 > *"If missions wish to use the APID naming domain to service... a deployment of multiple spacecraft, those missions must either manage and suballocate assignments in the single APID naming domain within the enterprise or define a way to extend it using mission-specific fields in the packet secondary header."* 
 
-**Implementation:** The VOID Protocol utilizes the 11-bit APID strictly for local RF hardware routing. Global Web3 Identity is extended into the payload via the `sat_id` (32-bit) field, allowing for over 4.2 billion sovereign orbital identities while maintaining strict compliance with the CCSDS 133.0-B-2 Recommended Standard. [^1]
+**Implementation:** The VOID Protocol utilizes the 11-bit APID strictly for local RF hardware routing. Global Web3 Identity is extended into the payload via the `sat_id` (32-bit) field, allowing for over 4.2 billion sovereign orbital identities while maintaining strict compliance with the CCSDS 133.0-B-2 Recommended Standard. 
 
 ---
 
