@@ -24,7 +24,7 @@ We strictly adhere to a **"Thick Client, Thin Server"** model for Open Source.
 
 | **Feature Domain** | **🌍 Void Protocol OSS (Community)** | **🔒 Void Enterprise (Commercial Product)** |
 | --- | --- | --- |
-| **Connectivity** | **SNLP & Core.** Full routing for ISM bands (LoRa/tinyGS) using the 184-byte SNLP standard. *Goal: Grassroots/Hobbyist Adoption.* | **CCSDS & Defense.** Inherits Core + Enterprise 176-byte CCSDS multiplexing, plus drivers for restricted hardware (e.g., Link-16, S-Band). |
+| **Connectivity** | **Universal Headers (SNLP & CCSDS).** The open-source C++ Bouncer natively multiplexes both the 184-byte SNLP (LoRa/tinyGS) and the 176-byte CCSDS standard. *Goal: Unrestricted standard adoption across all amateur and university bands.* | **High-End Transport & Scale.** Inherits Core + proprietary hardware drivers for high-bandwidth, licensed commercial bands (e.g., S-Band, X-Band, Link-16, phased-array). |
 | **Settlement** | **Lite Batching (Limit 10).** Aggregates receipts locally to match the physical downlink queue. Submits 1 batch to L2. *Goal: Usable UX.* | **High-Frequency Batching (Limit ∞).** Aggregates thousands of transactions across *multiple* ground stations. Optimized for MEV protection & gas arbitrage. |
 | **Identity (PKI)** | **Smart Client.** Fetches keys via HTTP, caches them locally (NVS/Disk). Handles offline retries. | **Authoritative Cloud.** The API itself. Handles key rotation, revocation lists, & reputation scoring. |
 | **Interface** | **CLI Only.** Native C++ Ground Station (`main.cpp`) for zero-heap, memory-safe edge validation and local logs. | **Mission Control.** Web/Mobile Dashboards. Fleet maps, analytics, user management. |
