@@ -2,6 +2,15 @@
 All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [2.1.3] - 2026-02-24
+### Added
+- Formalized `Protocol-spec-SNLP.md` specification for amateur ISM bands (LoRa/tinyGS/HABs).
+- Explicitly documented CCSDS APID extension compliance (CCSDS 133.0-B-2 Section 2.1.1) utilizing the 32-bit `sat_id` to support 4.2 billion global DePIN identities.
+
+### Changed
+- Redesigned the SNLP Community Payment (Packet B) to a strictly optimized **184-byte** footprint, guaranteeing perfect zero-copy memory alignment for both 32-bit and 64-bit hardware architectures.
+- Standardized the SNLP Header into a 12-byte "Universal Adapter" comprising a 32-bit Sync Word (`0x1D01A5A5`), a standard 6-byte CCSDS core, and a 2-byte hardware alignment buffer.
+
 ## [2.1.2] - 2026-02-23
 ### Added
 - Native C++ Ground Station implementation (`main.cpp`) to replace legacy Python prototypes.
