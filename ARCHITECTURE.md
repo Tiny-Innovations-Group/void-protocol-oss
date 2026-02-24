@@ -75,16 +75,16 @@ sequenceDiagram
 
 
         SatB->>SatB: 🔓 Decrypt (Verify Price/Terms)
-        SatB->>SatB: 📦 Wrap -> PACKET B (176 Bytes)
+        SatB->>SatB: 📦 Wrap -> PACKET B (176B / 184B)
         SatB->>SatB: 🔒 Encrypt Payload w/ SESSION_KEY
-        SatB->>SatB: ✍️ Sign with PUF Signature (Offsets 0-107)
+        SatB->>SatB: ✍️ Sign with PUF Signature (Offsets 0-107 or 10-111)
     end
 
     %% PHASE 4: SETTLEMENT
     rect rgb(45, 45, 30)
         Note over SatA, Chain: 🟠 PHASE 4: SETTLEMENT (The 60s Window)
 
-        SatB->>Ground: ⬇️ Downlink PACKET B (176 Bytes)
+        SatB->>Ground: ⬇️ Downlink PACKET B (176B / 184B)
 
         Ground->>DB: 🔍 Resolve Sat B Public Key
         Ground->>Ground: ✅ Verify Sat B PUF Signature
@@ -169,7 +169,7 @@ The following table summarizes the updated packet sizes and time-box constraints
 | **Onboarding** | Device | PUF key + Sat ID → Lookup | - | One-time |
 | **Handshake** | Sat B/Ground | Ephemeral Key Exchange (ECDH) | **112B** | **On AOS (Session Start)** |
 | **Discovery** | Sat A | Broadcast **Packet A** (Invoice) | **68B** | Per service event |
-| **Intent** | Sat B | Encapsulate & Sign **Packet B** | **176B** | Per orbital pass |
+| **Intent** | Sat B | Encapsulate & Sign **Packet B** | **176B / 184B** | Per orbital pass |****
 | **Settlement** | Ground | Verify & Pay on L2 | - | Until L2 confirmation |
 | **ACK Downlink** | Ground → Sat B | Send **Ack Packet** (Downlink) | **120B** | **Retry until ACK or 60s** |
 | **ACK Relay** | Sat B → Sat A | Broadcast **Tunnel Data** | **88B** | **DURATION ms** |
@@ -184,7 +184,8 @@ The following table summarizes the updated packet sizes and time-box constraints
 ## Technical Links
 
 * [Handshake Spec v2.1 (AOS/Session)](./Handshake-spec.md)
-* [Protocol Spec v2.1 (A & B)](./Protocol-spec.md)
+* [Protocol Spec CCSDS v2.1 (A & B)](./Protocol-spec-CCSDS.md)
+* [Protocol Spec SNLP v2.1 (A & B)](./Protocol-spec-SNLP.md)
 * [Acknowledgement Spec v2.1 (Ack & Tunnel)](./Acknowledgment-spec.md)
 * [Receipt Spec v2.1 (C & D)](./Receipt-spec.md)
 

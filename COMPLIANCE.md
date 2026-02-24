@@ -1,13 +1,15 @@
-/*-------------------------------------------------------------------------
- * 🛰️ VOID PROTOCOL v2.1 | Tiny Innovation Group Ltd
- * -------------------------------------------------------------------------
- * Authority: Tiny Innovation Group Ltd
- * Status:    Pre-Certification Compliance Map
- * File:      COMPLIANCE.md
- * Desc:      Traceability matrix for NSA/CISA & SEI CERT C++ Standards.
- * -------------------------------------------------------------------------*/
-
 # 🏛️ Compliance Roadmap & Standards Traceability
+
+> 🛰️ VOID PROTOCOL v2.1 | Tiny Innovation Group Ltd
+> 
+> Authority: Tiny Innovation Group Ltd
+> 
+> License: Apache 2.0
+>
+> Status:Pre-Certification Compliance Map
+> 
+> Desc:      Traceability matrix for NSA/CISA & SEI CERT C++ Standards.
+
 
 Void Protocol is engineered for high-assurance orbital environments. This document defines the engineering standards utilized to achieve "Clean C++" status and the roadmap toward formal third-party certification.
 

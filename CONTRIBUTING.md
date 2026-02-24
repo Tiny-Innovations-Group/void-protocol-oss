@@ -84,12 +84,16 @@ We strictly enforce the **NSA/CISA Memory Safety Guidelines** for C++. Code fail
 
 ---
 
-## 4. Python Ground Station (`/tools`)
 
-* Use `ctypes` for all structure definitions to match the C++ headers byte-for-byte.
-* Do not use `pickle` (security risk).
-* Type hinting is mandatory (`def func(a: int) -> None:`).
+## 4. C++ Ground Station CLI (`/ground_station`)
 
+We have deprecated the legacy Python prototypes. The Ground Station is now a high-performance, native C++ application.
+
+* **Build System:** **CMake** is mandatory. All cryptographic dependencies must be statically linked.
+* **Memory Safety:** The desktop `Bouncer` enforces the exact same "Zero-Heap" and SEI CERT C++ rules as the orbital hardware. No `std::string` or `malloc` is permitted in the packet parsing path.
+* **Networking:** The `GatewayClient` must utilize cross-platform, zero-heap socket wrappers (native POSIX / Winsock2) to bridge telemetry to the Go Gateway.
+* **Threading:** The CLI uses a dual-thread architecture. Hardware polling and user input loops must be strictly segregated to prevent blocking IO during telemetry ingestion.
+* 
 ---
 
 ## 5. Development Environment

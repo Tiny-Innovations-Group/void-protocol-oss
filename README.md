@@ -7,6 +7,12 @@
 > **Status:** Authenticated Clean Room Spec  
 > 
 > **Compliance:** NSA/CISA Memory Safety Guidelines & SEI CERT C++  
+> 
+> **Endianness**: CCSDS/SNLP Headers (Big-Endian) | Payload (Little-Endian)
+>
+> **Optimization:** 32/64-bit machine cycle alignment
+>
+> **Metric:** 184-Byte (SNLP) / 176-Byte (CCSDS) Footprints
 
 **⚠️ AUDIT STATUS: PRE-CERTIFICATION** This codebase is engineered to meet **NSA/CISA Memory Safety** and **SEI CERT C++** standards. However, it is currently in **Alpha/Pre-Audit** development. It has not yet undergone formal third-party certification. **Not for use in live flight-critical systems.**
 
@@ -46,7 +52,7 @@ The protocol operates asynchronously to ensure settlement finality across disrup
 | :--- | :--- | :--- | :--- |
 | **Packet H** | **Handshake** | 112B | Ephemeral Key Exchange (ECDH) & TTL |
 | **Packet A** | Invoice | 68B | Public service offer from Sat A |
-| **Packet B** | Payment | 176B | Encapsulated intent signed by Sat B |
+| **Packet B** | Payment | 176B / 184B | Encapsulated intent (CCSDS vs SNLP framing) |
 | **ACK** | Acknowledgment | 120B | Ground-to-Sat encrypted unlock command |
 | **Packet C** | Receipt | 104B | Proof-of-Execution signed by Sat A |
 | **Packet D** | Delivery | 128B | Final delivery of receipt to Ground Ledger |

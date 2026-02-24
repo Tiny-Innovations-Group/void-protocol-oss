@@ -24,10 +24,10 @@ We strictly adhere to a **"Thick Client, Thin Server"** model for Open Source.
 
 | **Feature Domain** | **🌍 Void Protocol OSS (Community)** | **🔒 Void Enterprise (Commercial Product)** |
 | --- | --- | --- |
-| **Connectivity** | **Full Core.** Packet structures, Handshake logic, ChaCha20/Ed25519 crypto. *Goal: Standard Adoption.* | **Superset.** Inherits Core + Drivers for restricted hardware (e.g., Link-16, rad-hard FPGAs). |
+| **Connectivity** | **SNLP & Core.** Full routing for ISM bands (LoRa/tinyGS) using the 184-byte SNLP standard. *Goal: Grassroots/Hobbyist Adoption.* | **CCSDS & Defense.** Inherits Core + Enterprise 176-byte CCSDS multiplexing, plus drivers for restricted hardware (e.g., Link-16, S-Band). |
 | **Settlement** | **Lite Batching (Limit 10).** Aggregates receipts locally to match the physical downlink queue. Submits 1 batch to L2. *Goal: Usable UX.* | **High-Frequency Batching (Limit ∞).** Aggregates thousands of transactions across *multiple* ground stations. Optimized for MEV protection & gas arbitrage. |
 | **Identity (PKI)** | **Smart Client.** Fetches keys via HTTP, caches them locally (NVS/Disk). Handles offline retries. | **Authoritative Cloud.** The API itself. Handles key rotation, revocation lists, & reputation scoring. |
-| **Interface** | **CLI Only.** Python scripts for debugging/dev (`ground_station.py`) with local logs. | **Mission Control.** Web/Mobile Dashboards. Fleet maps, analytics, user management. |
+| **Interface** | **CLI Only.** Native C++ Ground Station (`main.cpp`) for zero-heap, memory-safe edge validation and local logs. | **Mission Control.** Web/Mobile Dashboards. Fleet maps, analytics, user management. |
 | **Database** | **Client Cache.** SQLite/JSON for local state. "My Satellite's History." | **Global Ledger.** Postgres/TimescaleDB. "The Network's History." |
 | **Hardware** | **Drivers.** Abstractions for ATECC608/SE050 crypto chips. | **Provisioning.** The factory tool to *inject* keys into those chips securely. |
 | **Concurrency** | **Single-Session (Linear).** Handles 1 active connection. Simple `while(connected)` loop. *Goal: Easiest "Hello World".* | **Multi-Session (Multiplexing).** Async Event Loop handling 50+ concurrent connections. *Goal: Swarm Management.* |
@@ -126,4 +126,5 @@ When writing code, ask: **"Does this make the *Network* smarter, or just the *De
 ---
 
 **© 2026 Tiny Innovation Group Ltd.**
+
 
