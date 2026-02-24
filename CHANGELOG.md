@@ -2,6 +2,24 @@
 All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [2.1.2] - 2026-02-23
+### Added
+- Native C++ Ground Station implementation (`main.cpp`) to replace legacy Python prototypes.
+- Multi-threaded CLI architecture for simultaneous hardware polling and user command input.
+- Cross-platform `GatewayClient` in C++ for zero-heap TCP/HTTP communication with the Enterprise Gateway.
+- Go-based Enterprise Gateway for high-concurrency L2 Web3 routing and settlement.
+- Support for "Sync Word Multiplexer" to dynamically handle both CCSDS (Enterprise) and SNLP (tinyGS) headers.
+
+### Changed
+- Migrated primary Ground Station logic from Python to C++ to enforce strict orbital memory safety standards.
+- Archived early prototyping scripts (`ground_station.py`, `main.py`) to the `legacy-python/` directory.
+- Updated `Bouncer` packet processing to support flexible network headers without compromising cryptographic verification.
+
+### Security
+- Standardized `reinterpret_cast` usage to occur only after strict length and header ID verification.
+- Enforced static memory allocation for all network buffers to prevent heap fragmentation.
+- Implemented `snprintf`-based JSON serialization to prevent buffer overflows during data bridging.
+
 ## [2.1.1] - 2026-02-20
 ### Added
 - Python L2 Ground Station CLI (`main.py`, `ground_station.py`) with strict `ctypes` struct mapping.
