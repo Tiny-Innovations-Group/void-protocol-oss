@@ -1,4 +1,4 @@
-# Void Protocol Specification (v2.1)
+# Void Protocol Specification  (v2.1) - CCSDS Edition
 
 > 🛰️ VOID PROTOCOL v2.1 | Tiny Innovation Group Ltd
 >
@@ -98,6 +98,14 @@ _Ensures compatibility with commercial ground stations (AWS/KSAT)._
 | **18 - 31** | Seq. Count       | 14 bits | Rolling counter (0-16383)                  |
 | **32 - 47** | Length           | 16 bits | **Total Bytes - 6 - 1** (169 for Packet B) |
 
+### 4.1 APID Naming Domain & Global Identity Extension
+The standard CCSDS APID is restricted to an 11-bit field, yielding a maximum of 2,048 unique identifiers per naming domain. To support a globally scaled Decentralized Physical Infrastructure Network (DePIN) across multiple independent fleets, the VOID Protocol strictly adheres to the CCSDS extension guidelines.
+
+As per **CCSDS 133.0-B-2 (Space Packet Protocol, Section 2.1.1)**:
+> *"If missions wish to use the APID naming domain to service... a deployment of multiple spacecraft, those missions must either manage and suballocate assignments in the single APID naming domain within the enterprise or define a way to extend it using mission-specific fields in the packet secondary header."* 
+
+**Implementation:** The VOID Protocol utilizes the 11-bit APID strictly for local RF hardware routing. Global Web3 Identity is extended into the payload via the `sat_id` (32-bit) field, allowing for over 4.2 billion sovereign orbital identities while maintaining strict compliance with the CCSDS 133.0-B-2 Recommended Standard. [^1]
+
 ---
 
 ## 5. Security & Logic Controls
@@ -116,6 +124,11 @@ Sat B serves as a data courier (mule). To prevent buffer overflows, it uses a de
 - **Capacity:** 10 Receipts (~1.3 KB RAM).
 - **Eviction:** "Drop Oldest" ensures only the most recent network states are prioritized.
 - **Deduplication:** Incoming receipts are checked against the queue's `target_tx_id` to prevent redundant storage.
+
+---
+
+
+[^1]: *Consultative Committee for Space Data Systems (CCSDS). "Space Packet Protocol." Recommended Standard, CCSDS 133.0-B-2, Blue Book, June 2020.* [Link](https://ccsds.org/Pubs/133x0b2e2.pdf)
 
 ---
 
