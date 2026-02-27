@@ -14,6 +14,10 @@
 >
 > **Metric:** 112-Byte Footprint (Optimized)
 
+
+**NOTE: Data sent and received via TinyGS has to be public and not encrtyped, it can contain identifiable signtures**
+
+
 ## 1. Packet H: "The Handshake" (112 Bytes)
 
 *Bidirectional packet for Ephemeral Key Exchange. Replaces padding with functional TTL.*
