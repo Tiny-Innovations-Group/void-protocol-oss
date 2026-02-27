@@ -53,7 +53,7 @@ The Space Network Layer Protocol (SNLP) is a lightweight, high-reliability frami
 | **20-43** | `pos_vec` | 24B | Sat B Position (GPS Double Vector). |
 | **44-105** | **`enc_payload`** | 62B | **Inner Invoice** |
 | **106-109** | `sat_id` | 4B | Sat B ID (Mule ID). Extracted here instead of the header. |
-| **110-113** | `nonce` | 4B | Encryption Nonce Counter. |
+| **110-113** | `nonce` | 4B | Nonce Counter. |
 | **114-177** | `signature` | 64B | **PUF Signature** (Signs offsets 12-113). |
 | **178-181** | `global_crc` | 4B | Global Packet Integrity Check. |
 | **182-183** | `tail_pad` | 2B | `0x0000` (Structural alignment buffer) |
