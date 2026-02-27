@@ -8,7 +8,9 @@
 > 
 > **Status:** Production-Ready / TRL 6
 > 
-> **Primary Use Case:** LoRa LEO Satellites, High-Altitude Balloons, tinyGS Integration
+> **Primary Use Case:** LoRa LEO Satellites, High-Altitude Balloons
+
+**NOTE: Data sent and received via TinyGS has to be public and not encrtyped, it can contain identifiable signtures**
 
 ## 1. Overview & Rationale
 
@@ -49,7 +51,7 @@ The Space Network Layer Protocol (SNLP) is a lightweight, high-reliability frami
 | **00-11** | **SNLP Header** | 12B | **32-bit Sync Word** + **6-byte CCSDS Structure** + **2-byte Pad** |
 | **12-19** | `epoch_ts` | 8B | Little-Endian Sat B Timestamp. |
 | **20-43** | `pos_vec` | 24B | Sat B Position (GPS Double Vector). |
-| **44-105** | **`enc_payload`** | 62B | **ChaCha20 Encrypted Inner Invoice** |
+| **44-105** | **`enc_payload`** | 62B | **Inner Invoice** |
 | **106-109** | `sat_id` | 4B | Sat B ID (Mule ID). Extracted here instead of the header. |
 | **110-113** | `nonce` | 4B | Encryption Nonce Counter. |
 | **114-177** | `signature` | 64B | **PUF Signature** (Signs offsets 12-113). |
