@@ -2,6 +2,21 @@
 All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [2.1.4] - 2026-03-01
+### Added
+- `void_protocol_final.ksy`: Authenticated Clean Room Kaitai Struct spec for dual-header orbital protocol (CCSDS/SNLP), mixed-endian, with full routing and payload dispatch logic.
+- `gen_packet.py`: NSA/SEI CERT-compliant packet generator for protocol v2.1, producing test vectors for all major packet types (Invoice, Payment, Handshake, Receipt, Delivery, Command) in both SNLP and CCSDS formats.
+
+### Changed
+- Formalized header and payload alignment logic for zero-copy parsing and strict memory safety (no heap, no VLAs, no dynamic strings).
+- Enforced explicit endianness: Big-Endian for headers, Little-Endian for payloads, with bit-shifting for all multi-byte fields.
+- Updated packet generator to guarantee static buffer sizing and protocol compliance for all test vectors.
+
+### Security
+- All new code and specs strictly adhere to NSA/CISA Memory Safety Guidelines and SEI CERT C++ standards.
+- Kaitai spec enforces header ID and length validation before any reinterpret_cast or struct mapping.
+- Python generator uses only stack/static allocation and bounded formatting for all fields.
+
 ## [2.1.3] - 2026-02-24
 ### Added
 - Formalized `Protocol-spec-SNLP.md` specification for amateur ISM bands (LoRa/tinyGS/HABs).
