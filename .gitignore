@@ -194,3 +194,4 @@ ground_station
 
 # OS generated files
 .DS_Store
+generated_packets/

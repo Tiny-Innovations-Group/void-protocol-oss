@@ -1,7 +1,17 @@
 # VOID Protocol v2.1 - Binary Schema Specification
 
+> 🛰️ VOID PROTOCOL v2.1 | Tiny Innovation Group Ltd
+>
+> Authority: Tiny Innovation Group Ltd
+>
+> License: Apache 2.0
+>
+> Status: Authenticated Clean Room Spec
+> 
 > **File:** `void_protocol.ksy`
+> 
 > **Role:** Authoritative Source of Truth for Binary Parsing
+> 
 > **Engine:** Kaitai Struct (v0.10+)
 
 ## 1. The "Dual-Header" Strategy
@@ -51,3 +61,7 @@ kaitai-struct-compiler -t go --outdir ./gateway void_protocol.ksy
 
 # Generate Python Code
 kaitai-struct-compiler -t python --outdir ./scripts void_protocol.ksy
+```
+
+## 5. Testing
+In side of the the scripts folder you can find the **gen_packet.py** this can be used to generate `.bin` files that can we used to check the hex values.
