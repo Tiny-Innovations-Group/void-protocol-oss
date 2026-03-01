@@ -39,10 +39,6 @@ doc-ref:
 
 
 seq:
-  # 1. PEEK: Check for SNLP Sync Word (0x1D01A5A5)
-  - id: magic_peek
-    type: u4be
-    
   # 2. HEADER: Parse the correct routing header based on the peek
   - id: routing_header
     type:
@@ -68,8 +64,13 @@ seq:
         
         # --- VARIANT PAYLOADS (Padding Differences) ---
         114: packet_ack_body  # ACK (CCSDS - No Tail Pad)
+        34: heartbeat_body # System Heartbeat (SNLP - No Header, Just Body)
 
 instances:
+  magic_peek:
+    pos: 0
+    type: u4be
+    
   # Logic: If first 4 bytes = 0x1D01A5A5 (sync word), it's SNLP.
   is_snlp:
     value: magic_peek == 0x1D01A5A5
@@ -341,4 +342,42 @@ types:
       - id: frequency
         type: u4
       - id: duration_ms
+        type: u4
+  
+  heartbeat_body:
+    doc: "System Heartbeat (Health & Status & GPS)"
+    seq:
+      - id: epoch_ts
+        type: u8
+        doc: "Timestamp (Unix)"
+      - id: vbatt_mv
+        type: u2
+        doc: "Battery Voltage (mV)"
+      - id: temp_c
+        type: s2
+        doc: "Internal Temp (Centidegrees, e.g. 2500 = 25.00C)"
+      - id: pressure_pa
+        type: u4
+        doc: "Barometric Pressure (Pascals)"
+      - id: sys_state
+        type: u1
+        doc: "State Machine ID (0=Boot, 1=Idle, 2=Tx...)"
+      - id: sat_lock
+        type: u1
+        doc: "GPS Satellite Count"
+        # --- GPS  ---
+      - id: lat_fixed
+        type: s4
+        doc: "Latitude (Scaled by 10^7, e.g. 51500000 = 51.5N)"
+      - id: lon_fixed
+        type: s4
+        doc: "Longitude (Scaled by 10^7, e.g. -120000 = 0.12W)"
+      - id: reserved_interval
+        size: 2
+        doc: "Reserved for 2026 payload expansion"
+      - id: gps_speed_cms
+        type: u2
+        doc: "Ground Speed (cm/s, e.g. 540 = 5.4 m/s)"
+      # -----------------------------------------------
+      - id: crc32
         type: u4

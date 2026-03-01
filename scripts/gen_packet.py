@@ -176,6 +176,31 @@ def gen_packet_ack(is_snlp):
     header = build_header(is_snlp, len(body), APID_SAT_B, is_cmd=True)
     return header + body
 
+def gen_packet_l(is_snlp):
+    """Packet L: Heartbeat (34 Byte Body)"""
+    # 34 Bytes Payload
+    epoch_ts      = struct.pack('<Q', 1709300005) # 8B
+    vbatt_mv      = struct.pack('<H', 4150)       # 2B (4.15V)
+    temp_c        = struct.pack('<h', 2550)       # 2B (25.50C)
+    pressure_pa   = struct.pack('<I', 101325)     # 4B
+    sys_state     = struct.pack('<B', 2)          # 1B (Tx)
+    sat_lock      = struct.pack('<B', 12)         # 1B
+    lat_fixed     = struct.pack('<i', 515074000)  # 4B (51.5074 N)
+    lon_fixed     = struct.pack('<i', -127800)    # 4B (-0.1278 W)
+    reserved      = b'\x00\x00'                   # 2B
+    gps_speed_cms = struct.pack('<H', 550)        # 2B (5.5 m/s)
+    crc32         = struct.pack('<I', 0xCAFEBABE) # 4B
+
+    body = (
+        epoch_ts + vbatt_mv + temp_c + pressure_pa + 
+        sys_state + sat_lock + lat_fixed + lon_fixed + 
+        reserved + gps_speed_cms + crc32
+    )
+    # Total Body: 34 Bytes
+    
+    header = build_header(is_snlp, len(body), APID_SAT_B, is_cmd=False)
+    return header + body
+
 # ==============================================================================
 # MAIN EXECUTION
 # ==============================================================================
@@ -191,6 +216,7 @@ def main():
         ("packet_c_receipt", gen_packet_c),
         ("packet_d_delivery", gen_packet_d),
         ("packet_ack_command", gen_packet_ack),
+        ("packet_l_heartbeat", gen_packet_l), # <--- ADDED PACKET L
     ]
 
     print(f"--- Generating Packets in '{OUTPUT_DIR}/' ---")

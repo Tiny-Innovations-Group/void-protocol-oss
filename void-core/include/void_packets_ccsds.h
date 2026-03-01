@@ -196,6 +196,32 @@ typedef struct __attribute__((packed)) {
 
 static_assert(sizeof(PacketD_t) == SIZE_PACKET_D, "PacketD_t size mismatch");
 
+/*
+ * @brief Packet L: Life/Heartbeat
+ * @size  40 Bytes (CCSDS) / 48 Bytes (SNLP)
+ * @cite  void_protocol.ksy
+ */
+typedef struct __attribute__((packed)) {
+    VoidHeader_t header;        // Polymorphic (6B or 14B)
+    
+    uint64_t     epoch_ts;      // 00-07: Unix Timestamp
+    uint16_t     vbatt_mv;      // 08-09: Battery mV
+    int16_t      temp_c;        // 10-11: Temp (centidegrees)
+    uint32_t     pressure_pa;   // 12-15: Pressure (Pa)
+    uint8_t      sys_state;     // 16:    State ID
+    uint8_t      sat_lock;      // 17:    GPS Lock Count
+    
+    // --- NEW GPS FIELDS ---
+    int32_t      lat_fixed;     // 18-21: Lat * 10^7
+    int32_t      lon_fixed;     // 22-25: Lon * 10^7
+    uint8_t      reserved[2];   // 26-27: Padding/Reserved
+    uint16_t     gps_speed_cms; // 28-29: Speed cm/s
+    
+    uint32_t     crc32;         // 30-33: Checksum
+} HeartbeatPacket_t;
+
+static_assert(sizeof(HeartbeatPacket_t) == SIZE_HEARTBEAT_PCK, "HeartbeatPacket_t size mismatch");
+
 // Restore default alignment
 #pragma pack(pop)
 

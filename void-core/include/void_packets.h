@@ -6,6 +6,7 @@
  * based on the build flags defined in platformio.ini.
  * -------------------------------------------------------------------------*/
 
+
 #ifndef VOID_PACKETS_H
 #define VOID_PACKETS_H
 
@@ -30,6 +31,8 @@
     #define SIZE_PACKET_H           112     // Handshake
     #define SIZE_PACKET_ACK         120     // Acknowledgement
     #define SIZE_TUNNEL_DATA        88      // Tunnel Data (from PacketAck_t::enc_tunnel)
+    #define SIZE_HEARTBEAT_PCK  40   // 6 (Head) + 32 (Body)
+
 
     #include "void_packets_ccsds.h"
 
@@ -46,6 +49,8 @@
     #define SIZE_PACKET_H           120     // Handshake
     #define SIZE_PACKET_ACK         136     // Acknowledgement
     #define SIZE_TUNNEL_DATA        96      // Tunnel Data (from PacketAck_t::enc_tunnel)
+    #define SIZE_HEARTBEAT_PCK  48   // 14 (Head) + 32 (Body)
+
 
     #include "void_packets_snlp.h"
 
