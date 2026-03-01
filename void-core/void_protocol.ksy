@@ -6,15 +6,23 @@ meta:
   file-extension: void_protocol
 
 doc: |
+  ------------------------------------------------------------------------
+  🛰️ VOID PROTOCOL v2.1 | Tiny Innovation Group Ltd
+  -------------------------------------------------------------------------
+  Authority: Tiny Innovation Group Ltd
+  License:   Apache 2.0
+  Status:    Authenticated Clean Room Spec
+  File:      void_protocol.ksy
+  Desc:      A Kaitai Struct file(KSY) containing the dual-header aerospace protocol for orbital settlement.
+  -------------------------------------------------------------------------
+
   VOID Protocol v2.1 (Layer 2 M2M Settlement)
-  
-  A dual-header aerospace protocol for orbital settlement.
   
   ## Routing Architecture
   This parser automatically distinguishes between two physical layer frame formats:
-  1. **Community Tier (SNLP):** Optimized for LoRa/ISM bands (433/868/915 MHz). 
+  1. Community Tier (SNLP): Optimized for LoRa/ISM bands (433/868/915 MHz). 
      Identified by the Sync Word `0x1D01A5A5`. Uses a 14-byte header.
-  2. **Enterprise Tier (CCSDS):** Standard S-Band/X-Band format. 
+  2. Enterprise Tier (CCSDS): Standard S-Band/X-Band format. 
      Uses a strict 6-byte CCSDS Space Packet Protocol header.
   
   ## Public Data Mandate
@@ -70,12 +78,27 @@ instances:
   payload_len:
     value: >-
       is_snlp ? (_io.size - 14) : (_io.size - 6)
+      
+  global_packet_type:
+    value: >-
+      is_snlp 
+      ? (routing_header.as<header_snlp>.ccsds.packet_type) 
+      : (routing_header.as<header_ccsds>.packet_type)
+    doc: "0=Telemetry, 1=Command. valid for both SNLP and CCSDS."
+
+  global_apid:
+    value: >-
+      is_snlp 
+      ? (routing_header.as<header_snlp>.ccsds.apid) 
+      : (routing_header.as<header_ccsds>.apid)
+
 
 types:
   # ==========================================
   # HEADERS (BIG ENDIAN ENFORCED)
   # ==========================================
   header_ccsds:
+  
     doc: |
       CCSDS Primary Header - 6 Bytes
   
@@ -104,8 +127,10 @@ types:
       seq_flags:
         value: (seq_flags_count >> 14) & 0b11
       seq_count:
-        value: seq_flags_count & 0x3FFF
-      # packet_length: packet_length + 1  # CCSDS Packet Length is (Total - 7)
+        value: seq_flags_count & 0x3FF
+      actual_length:
+        value: packet_length + 7
+        doc: "Total packet length in bytes (derived from CCSDS field)"
 
   header_snlp:
     doc: |
@@ -128,7 +153,31 @@ types:
       size: 4
       doc: "4-Byte Pad for 64-bit Alignment"
 
+  # ==========================================
+  # Custom Types
+  # ==========================================
+  vector_3d:
+      doc: "IEEE 754 Double Precision Vector (X, Y, Z)"
+      seq:
+        - id: x
+          type: f8
+          doc: "ECEF X Coordinate (Meters)"
+        - id: y
+          type: f8
+          doc: "ECEF Y Coordinate (Meters)"
+        - id: z
+          type: f8
+          doc: "ECEF Z Coordinate (Meters)"
   
+  vector_3f:
+    doc: "IEEE 754 Single Precision Vector (dX, dY, dZ)"
+    seq:
+      - id: x
+        type: f4
+      - id: y
+        type: f4
+      - id: z
+        type: f4
   # ==========================================
   # DISPATCHERS
   # ==========================================
@@ -137,7 +186,7 @@ types:
     seq:
       - id: content
         type:
-          switch-on: _parent.header.ccsds.packet_type
+          switch-on: _root.global_packet_type
           cases:
             0: packet_d_body    # Type 0 = Telemetry (Delivery)
             1: packet_ack_body  # Type 1 = Command (Ack)
@@ -160,9 +209,8 @@ types:
       - id: epoch_ts
         type: u8
       - id: pos_vec
-        type: f8
-        repeat: expr
-        repeat-count: 3
+        type: vector_3d
+        doc: "Sat B Position Vector (X, Y, Z)"
       - id: enc_payload
         size: 62
         doc: "Inner Invoice. Plaintext if SNLP (Public), ChaCha20 Ciphertext if CCSDS (Private)."
@@ -183,13 +231,9 @@ types:
       - id: epoch_ts
         type: u8
       - id: pos_vec
-        type: f8
-        repeat: expr
-        repeat-count: 3
+        type: vector_3d
       - id: vel_vec
-        type: f4
-        repeat: expr
-        repeat-count: 3
+        type: vector_3f
       - id: sat_id
         type: u4
       - id: amount
