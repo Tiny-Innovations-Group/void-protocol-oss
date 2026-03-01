@@ -14,9 +14,16 @@
 #include <stdint.h>
 #include <stddef.h>
 
+// ---------------------------------------------------------
+// BUILD CONFIGURATION
+// ---------------------------------------------------------
+// Uncomment the target network for this specific build:
+// #define VOID_NETWORK_CCSDS  1   // For S-Band
+#define VOID_NETWORK_SNLP 1        // For LoRa
+
 /* --- PROTOCOL CONSTANTS --- */
 #define VOID_PROTOCOL_VERSION   0x01
-#define VOID_MAX_PACKET_SIZE    176     // Max MTU (Packet B)
+#define VOID_MAX_PACKET_SIZE    184     // Max MTU (Packet B)
 #define VOID_SESSION_TTL_DEF    600     // Default session window (10 mins)
 
 /* --- CRYPTO SIZES --- */
@@ -24,16 +31,6 @@
 #define CRYPTO_SIG_SIZE         64      // Ed25519/PUF Signature Bytes
 #define CRYPTO_NONCE_SIZE       12      // ChaCha20 Nonce (Constructed)
 #define CRYPTO_HASH_SIZE        32      // SHA-256 Digest
-
-/* --- PACKET SIZES (STRICT) --- */
-#define SIZE_PACKET_A           68      // Invoice
-#define SIZE_PACKET_B           176     // Payment
-#define SIZE_PACKET_H           112     // Handshake
-#define SIZE_PACKET_C           104     // Receipt
-#define SIZE_PACKET_D           128     // Delivery
-#define SIZE_PACKET_ACK         120     // Acknowledgement
-#define SIZE_TUNNEL_DATA        88      // Tunnel Data (from PacketAck_t::enc_tunnel)
-#define SIZE_VOID_HEADER         6       // CCSDS Primary Header
 
 /* --- CCSDS APID MASKS --- */
 #define CCSDS_VER_MASK          0xE0    // Version 1 (bits 0-2)
