@@ -37,7 +37,7 @@ The core logic is generated from the KSY file. If you modify the protocol defini
 
 ```bash
 # Regenerate the Go Parser from KSY source
-kaitai-struct-compiler -t go --outdir ./gateway void_protocol.ksy
+kaitai-struct-compiler -t go --outdir ./gateway/void_protocol ../void_protocol_final_v2.ksy
 
 ```
 
