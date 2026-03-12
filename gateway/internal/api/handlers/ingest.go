@@ -12,7 +12,7 @@ import (
 	"github.com/kaitai-io/kaitai_struct_go_runtime/kaitai"
 )
 
-// Helper function to pretty-print any struct as JSON
+// Helper function to pretty-print any struct as JSON -> useful for debugging complex payloads
 func prettyPrintStruct(name string, v interface{}) {
 	b, err := json.MarshalIndent(v, "", "  ")
 	if err == nil {
@@ -87,6 +87,7 @@ func IngestPacket(c *gin.Context) {
 		case *void_protocol.VoidProtocol_PacketDBody:
 			log.Printf("   📦 DELIVERY (D)  | Mule SatID: %d | Downlink TS: %d",
 				inner.SatBId, inner.DownlinkTs)
+			prettyPrintStruct("DELIVERY (D) Payload", inner)
 		case *void_protocol.VoidProtocol_PacketAckBody:
 			log.Printf("   ✅ COMMAND ACK   | Target TxID: %d | Status: %d | Freq: %d Hz",
 				inner.TargetTxId, inner.Status, inner.RelayOps.Frequency)
