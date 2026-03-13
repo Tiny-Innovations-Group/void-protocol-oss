@@ -1,6 +1,16 @@
 import struct
 import os
-'''
+import zlib  # <--- ADDED for real CRC-32
+
+try:
+    from cryptography.hazmat.primitives.asymmetric import ed25519
+    from cryptography.hazmat.primitives import serialization
+    HAS_CRYPTO = True
+except ImportError:
+    HAS_CRYPTO = False
+    print("⚠️  'cryptography' module not found. Installing it is required for real signatures: pip install cryptography")
+
+"""
 /*-------------------------------------------------------------------------
  * 🛰️ VOID PROTOCOL v2.1 | Tiny Innovation Group Ltd
  * -------------------------------------------------------------------------
@@ -10,7 +20,7 @@ import os
  * File:      gen_packet.py
  * Desc:      Packet generator for VOID Protocol v2.1 ksy testing.
  * -------------------------------------------------------------------------*/
-'''
+"""
 
 # ==============================================================================
 # CONFIGURATION & CONSTANTS
@@ -26,45 +36,36 @@ APID_GROUND = 0
 APID_SAT_A  = 100  # Seller
 APID_SAT_B  = 101  # Mule/Buyer
 
+# --- PUF Private Keys (These match the public keys in your Go registry) ---
+# Sat A (Seller - 100) Private Key
+PRIV_HEX_A = "bc1df4fa6e3d7048992f14e655060cbb2190bded9002524c06e7cbb163df15fb"
+# Sat B (Buyer/Mule - 101) Private Key
+PRIV_HEX_B = "8994ec3b3d470df7432bd5b74783765822c756c7ff972942a5efdad61473605b"
+
+if HAS_CRYPTO:
+    # Load the keys into memory
+    priv_key_a = ed25519.Ed25519PrivateKey.from_private_bytes(bytes.fromhex(PRIV_HEX_A))
+    priv_key_b = ed25519.Ed25519PrivateKey.from_private_bytes(bytes.fromhex(PRIV_HEX_B))
+
 # ==============================================================================
 # HEADER BUILDER
 # ==============================================================================
 def build_header(is_snlp, payload_len, apid, is_cmd=False):
-    """
-    Constructs either a 14-byte SNLP header or a 6-byte CCSDS header.
-    """
-    # --- 1. CCSDS Primary Header (6 Bytes) ---
-    # Bits 0-2: Version (000)
-    # Bit 3:    Type (0=Telemetry/Data, 1=Command)
-    # Bit 4:    Sec Header Flag (1=Present)
-    # Bits 5-15: APID
-    
     ver = 0
     pkt_type = 1 if is_cmd else 0
     sec_flag = 1
     
-    # Construct the 16-bit ID field
-    # (Ver << 13) | (Type << 12) | (Sec << 11) | APID
     id_field_val = (ver << 13) | (pkt_type << 12) | (sec_flag << 11) | (apid & 0x7FF)
     ver_type_apid = struct.pack('>H', id_field_val)
-
-    # Sequence Flags (11=Unsegmented) | Count (0)
-    # 0xC000 = 1100 0000 ...
     seq_count = struct.pack('>H', 0xC000)
-
-    # Packet Length (16 bits)
-    # Definition: Total Octets in Packet Data Field (Payload) - 1
+    
     length_val = payload_len - 1
     pkt_length = struct.pack('>H', length_val)
-
     ccsds_block = ver_type_apid + seq_count + pkt_length
 
-    # --- 2. SNLP Wrapper (If enabled) ---
     if is_snlp:
-        # 14 Bytes: Sync(4) + CCSDS(6) + Pad(4)
         return SYNC_WORD + ccsds_block + SNLP_PAD
     else:
-        # 6 Bytes: CCSDS Only
         return ccsds_block
 
 # ==============================================================================
@@ -72,134 +73,148 @@ def build_header(is_snlp, payload_len, apid, is_cmd=False):
 # ==============================================================================
 
 def gen_packet_a(is_snlp):
-    """Packet A: Invoice (62 Byte Body)"""
-    # Payload Fields
-    epoch    = struct.pack('<Q', 1709300000)       # 8B
-    pos_vec  = struct.pack('<ddd', 1.1, 2.2, 3.3)  # 24B
-    vel_vec  = struct.pack('<fff', 0.1, 0.2, 0.3)  # 12B
-    sat_id   = struct.pack('<I', APID_SAT_A)       # 4B
-    amount   = struct.pack('<Q', 5000)             # 8B
-    asset_id = struct.pack('<H', 1)                # 2B
-    crc      = struct.pack('<I', 0xAAAA1111)       # 4B
+    """Packet A: Invoice (62 Byte Body, protocol-compliant)"""
+    epoch    = struct.pack('<Q', 1710000000)       
+    pos_vec  = struct.pack('<ddd', 7000.123, -12000.456, 550.789)  
+    vel_vec  = struct.pack('<fff', 7.5, -0.2, 0.01)  
+    sat_id   = struct.pack('<I', APID_SAT_A)       
+    amount   = struct.pack('<Q', 420000000)        
+    asset_id = struct.pack('<H', 1)                
     
-    body = epoch + pos_vec + vel_vec + sat_id + amount + asset_id + crc
-    # Total Body: 62 Bytes
+    partial_body = epoch + pos_vec + vel_vec + sat_id + amount + asset_id
+    header = build_header(is_snlp, len(partial_body) + 4, APID_SAT_A, is_cmd=False)
     
-    header = build_header(is_snlp, len(body), APID_SAT_A, is_cmd=False)
-    return header + body
+    crc = struct.pack('<I', zlib.crc32(header + partial_body) & 0xFFFFFFFF)
+    return header + partial_body + crc
 
 def gen_packet_b(is_snlp):
-    """Packet B: Payment (170 Byte Body)"""
-    epoch       = struct.pack('<Q', 1709300001)       # 8B
-    pos_vec     = struct.pack('<ddd', 4.4, 5.5, 6.6)  # 24B
-    enc_payload = b'\xBB' * 62                        # 62B (Ciphertext/Plaintext)
-    sat_id      = struct.pack('<I', APID_SAT_B)       # 4B
-    nonce       = struct.pack('<I', 999)              # 4B
-    signature   = b'\xCC' * 64                        # 64B
-    crc         = struct.pack('<I', 0xBBBB2222)       # 4B
+    """Packet B: Payment (protocol-compliant, 184B SNLP, 176B CCSDS)"""
+    epoch       = struct.pack('<Q', 1710000100)       
+    pos_vec     = struct.pack('<ddd', 7010.0, -11990.0, 560.0)  
+    enc_payload = (
+        struct.pack('<Q', 1710000000) +  
+        struct.pack('<I', 420000000) +   
+        struct.pack('<H', 1) +           
+        b'PAYMENT' + b'\x00' * (62-8-4-2-7)  
+    )[:62]
+    sat_id      = struct.pack('<I', APID_SAT_B)       
+    nonce       = struct.pack('<I', 123456)           
     
-    body = epoch + pos_vec + enc_payload + sat_id + nonce + signature + crc
-    # Total Body: 170 Bytes
+    message_to_sign = epoch + pos_vec + enc_payload + sat_id + nonce
     
-    header = build_header(is_snlp, len(body), APID_SAT_B, is_cmd=False)
-    return header + body
+    if HAS_CRYPTO:
+        signature = priv_key_b.sign(message_to_sign)
+    else:
+        signature = bytes([0xAB + (i % 5) for i in range(64)])
+        
+    partial_body = message_to_sign + signature
+    header = build_header(is_snlp, len(partial_body) + 4, APID_SAT_B, is_cmd=False)
+    
+    crc = struct.pack('<I', zlib.crc32(header + partial_body) & 0xFFFFFFFF)
+    return header + partial_body + crc
 
 def gen_packet_h(is_snlp):
-    """Packet H: Handshake (106 Byte Body)"""
-    ttl       = struct.pack('<H', 600)          # 2B
-    timestamp = struct.pack('<Q', 1709300002)   # 8B
-    pub_key   = b'\xDD' * 32                    # 32B
-    signature = b'\xEE' * 64                    # 64B
+    """Packet H: Handshake (106 Byte Body, protocol-compliant)"""
+    ttl       = struct.pack('<H', 900)                
+    timestamp = struct.pack('<Q', 1710000200)         
+    pub_key   = bytes([0xA0 + (i % 16) for i in range(32)])
     
+    to_sign = ttl + timestamp + pub_key
+    if HAS_CRYPTO:
+        signature = priv_key_b.sign(to_sign)
+    else:
+        signature = bytes([0xC0 + (i % 8) for i in range(64)])
+        
     body = ttl + timestamp + pub_key + signature
-    # Total Body: 106 Bytes
-    
-    header = build_header(is_snlp, len(body), APID_SAT_B, is_cmd=False)
+    header = build_header(is_snlp, len(body), APID_SAT_B, is_cmd=False) # Packet H does not have a CRC
     return header + body
 
 def gen_packet_c(is_snlp):
-    """Packet C: Receipt (98 Byte Body)"""
-    pad_head   = b'\x00\x00'                      # 2B
-    exec_time  = struct.pack('<Q', 1709300003)    # 8B
-    enc_tx_id  = struct.pack('<Q', 8888)          # 8B
-    enc_status = b'\x01'                          # 1B
-    pad_sig    = b'\x00' * 7                      # 7B
-    signature  = b'\xFF' * 64                     # 64B
-    crc        = struct.pack('<I', 0xCCCC3333)    # 4B
-    tail_pad   = b'\x00' * 4                      # 4B
+    """Packet C: Receipt (98 Byte Body, protocol-compliant)"""
+    pad_head   = b'\x00\x00'                      
+    exec_time  = struct.pack('<Q', 1710000300)      
+    enc_tx_id  = struct.pack('<Q', 0xDEADBEEFCAFEBABE) 
+    enc_status = b'\x01'                           
+    pad_sig    = b'\x00' * 7                       
     
-    body = pad_head + exec_time + enc_tx_id + enc_status + pad_sig + signature + crc + tail_pad
-    # Total Body: 98 Bytes
+    message_to_sign = pad_head + exec_time + enc_tx_id + enc_status + pad_sig
+    if HAS_CRYPTO:
+        signature = priv_key_a.sign(message_to_sign)
+    else:
+        signature = bytes([0xD0 + (i % 7) for i in range(64)])
+        
+    tail_pad   = b'\x00' * 4
+    partial_body = message_to_sign + signature
     
-    header = build_header(is_snlp, len(body), APID_SAT_A, is_cmd=False)
-    return header + body
+    header = build_header(is_snlp, len(partial_body) + 4 + len(tail_pad), APID_SAT_A, is_cmd=False)
+    crc = struct.pack('<I', zlib.crc32(header + partial_body) & 0xFFFFFFFF)
+    
+    return header + partial_body + crc + tail_pad
 
 def gen_packet_d(is_snlp):
-    """Packet D: Delivery (122 Byte Body)"""
-    # Packet D wraps Packet C (Receipt). 
-    # For simulation, we create a dummy payload of 98 bytes.
-    pad_head    = b'\x00\x00'                     # 2B
-    downlink_ts = struct.pack('<Q', 1709300004)   # 8B
-    sat_b_id    = struct.pack('<I', APID_SAT_B)   # 4B
-    payload     = b'\xDD' * 98                    # 98B (The inner Packet C)
-    global_crc  = struct.pack('<I', 0xDDDD4444)   # 4B
-    tail        = b'\x00' * 6                     # 6B
+    """Packet D: Delivery (122 Byte Body, protocol-compliant)"""
+    pad_head    = b'\x00\x00'                     
+    downlink_ts = struct.pack('<Q', 1710000400)     
+    sat_b_id    = struct.pack('<I', APID_SAT_B)     
+    payload     = bytes([0xE0 + (i % 16) for i in range(98)])
     
-    body = pad_head + downlink_ts + sat_b_id + payload + global_crc + tail
-    # Total Body: 122 Bytes
+    tail = b'\x00' * 6
+    partial_body = pad_head + downlink_ts + sat_b_id + payload
     
-    # NOTE: Packet D is Telemetry (Cmd=False). Collision with ACK (Cmd=True) on 122 bytes.
-    header = build_header(is_snlp, len(body), APID_SAT_B, is_cmd=False)
-    return header + body
+    header = build_header(is_snlp, len(partial_body) + 4 + len(tail), APID_SAT_B, is_cmd=False)
+    crc = struct.pack('<I', zlib.crc32(header + partial_body) & 0xFFFFFFFF)
+    
+    return header + partial_body + crc + tail
 
 def gen_packet_ack(is_snlp):
-    """Packet ACK: Command (Variable Body Size)"""
-    # Common Fields (26 Bytes)
-    pad_a        = b'\x00\x00'                    # 2B
-    target_tx_id = struct.pack('<I', 12345)       # 4B
-    status       = b'\x01'                        # 1B
-    pad_b        = b'\x00'                        # 1B
-    relay_ops    = b'\x11' * 12                   # 12B
-    pad_c        = b'\x00\x00'                    # 2B
-    crc          = struct.pack('<I', 0xEEEE5555)  # 4B
-
-    # Variable Tunnel Data
-    # SNLP Tunnel = 96 Bytes. CCSDS Tunnel = 88 Bytes.
+    """Packet ACK: Command (114B CCSDS, 122B SNLP, protocol-compliant)"""
+    pad_a        = b'\x00\x00'                    
+    target_tx_id = struct.pack('<I', 0xCAFEBABE)   
+    status       = b'\x01'                        
+    pad_b        = b'\x00'                        
+    
+    relay_ops    = (
+        struct.pack('<H', 180) +    
+        struct.pack('<H', 45) +     
+        struct.pack('<I', 437200000) + 
+        struct.pack('<I', 5000)     
+    )
+    
     tunnel_size = 96 if is_snlp else 88
-    enc_tunnel = b'\x99' * tunnel_size
+    enc_tunnel = (
+        b'\xAA' * 6 + b'\x00' * 2 + struct.pack('<Q', 0x123456789ABCDEF0) +
+        struct.pack('<H', 0x0001) + struct.pack('<H', 600) +
+        bytes([0xF0 + (i % 8) for i in range(64)]) + struct.pack('<I', 0xBEEFCAFE)
+    )[:tunnel_size]
     
-    # Assemble: Note order from spec/KSY
-    # pad_a + target + status + pad_b + relay + tunnel + pad_c + crc
-    body = pad_a + target_tx_id + status + pad_b + relay_ops + enc_tunnel + pad_c + crc
+    pad_c        = b'\x00\x00'                    
     
-    # NOTE: ACK is a COMMAND (Type=1)
-    header = build_header(is_snlp, len(body), APID_SAT_B, is_cmd=True)
-    return header + body
+    partial_body = pad_a + target_tx_id + status + pad_b + relay_ops + enc_tunnel + pad_c
+    header = build_header(is_snlp, len(partial_body) + 4, APID_SAT_B, is_cmd=True)
+    
+    crc = struct.pack('<I', zlib.crc32(header + partial_body) & 0xFFFFFFFF)
+    return header + partial_body + crc
 
 def gen_packet_l(is_snlp):
-    """Packet L: Heartbeat (34 Byte Body)"""
-    # 34 Bytes Payload
-    epoch_ts      = struct.pack('<Q', 1709300005) # 8B
-    vbatt_mv      = struct.pack('<H', 4150)       # 2B (4.15V)
-    temp_c        = struct.pack('<h', 2550)       # 2B (25.50C)
-    pressure_pa   = struct.pack('<I', 101325)     # 4B
-    sys_state     = struct.pack('<B', 2)          # 1B (Tx)
-    sat_lock      = struct.pack('<B', 12)         # 1B
-    lat_fixed     = struct.pack('<i', 515074000)  # 4B (51.5074 N)
-    lon_fixed     = struct.pack('<i', -127800)    # 4B (-0.1278 W)
-    reserved      = b'\x00\x00'                   # 2B
-    gps_speed_cms = struct.pack('<H', 550)        # 2B (5.5 m/s)
-    crc32         = struct.pack('<I', 0xCAFEBABE) # 4B
-
-    body = (
-        epoch_ts + vbatt_mv + temp_c + pressure_pa + 
-        sys_state + sat_lock + lat_fixed + lon_fixed + 
-        reserved + gps_speed_cms + crc32
-    )
-    # Total Body: 34 Bytes
+    """Packet L: Heartbeat (34 Byte Body, protocol-compliant)"""
+    epoch_ts      = struct.pack('<Q', 1710000500)   
+    vbatt_mv      = struct.pack('<H', 4100)         
+    temp_c        = struct.pack('<h', 2300)         
+    pressure_pa   = struct.pack('<I', 100800)       
+    sys_state     = struct.pack('<B', 3)            
+    sat_lock      = struct.pack('<B', 8)            
+    lat_fixed     = struct.pack('<i', 515000000)    
+    lon_fixed     = struct.pack('<i', -128000)      
+    reserved      = b'\x00\x00'                    
+    gps_speed_cms = struct.pack('<H', 600)          
     
-    header = build_header(is_snlp, len(body), APID_SAT_B, is_cmd=False)
-    return header + body
+    partial_body = (epoch_ts + vbatt_mv + temp_c + pressure_pa + 
+        sys_state + sat_lock + lat_fixed + lon_fixed + 
+        reserved + gps_speed_cms)
+        
+    header = build_header(is_snlp, len(partial_body) + 4, APID_SAT_B, is_cmd=False)
+    crc = struct.pack('<I', zlib.crc32(header + partial_body) & 0xFFFFFFFF)
+    return header + partial_body + crc
 
 # ==============================================================================
 # MAIN EXECUTION
@@ -216,7 +231,7 @@ def main():
         ("packet_c_receipt", gen_packet_c),
         ("packet_d_delivery", gen_packet_d),
         ("packet_ack_command", gen_packet_ack),
-        ("packet_l_heartbeat", gen_packet_l), # <--- ADDED PACKET L
+        ("packet_l_heartbeat", gen_packet_l),
     ]
 
     print(f"--- Generating Packets in '{OUTPUT_DIR}/' ---")

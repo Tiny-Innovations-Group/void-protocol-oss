@@ -4,6 +4,7 @@ import (
 	"log"
 
 	"github.com/Tiny-Innovations-Group/void-protocol-oss/gateway/internal/api/handlers"
+	"github.com/Tiny-Innovations-Group/void-protocol-oss/gateway/internal/core/registry"
 
 	"github.com/gin-gonic/gin"
 )
@@ -11,6 +12,7 @@ import (
 func main() {
 	// Initialize Gin in release mode for speed (or debug for local)
 	router := gin.Default()
+	registry.Initialize()
 
 	// Setup our API group
 	v1 := router.Group("/api/v1")

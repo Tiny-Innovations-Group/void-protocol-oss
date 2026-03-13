@@ -12,7 +12,7 @@ import (
 
 func main() {
 	// 1. Setup command line flags
-	packetName := flag.String("packet", "void_packet_d_delivery_ccsds.bin", "The name of the generated .bin file to inject")
+	packetName := flag.String("packet", "void_packet_b_payment_ccsds.bin", "The name of the generated .bin file to inject")
 	dirName := flag.String("dir", "generated_packets", "The directory containing the .bin files")
 	flag.Parse()
 
