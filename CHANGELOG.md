@@ -2,6 +2,23 @@
 All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [2.2.0] - 2026-03-13
+### Added
+- **VOID Gateway (Go Web3 Router):** Introduced the `cmd/server/main.go` entry point for the off-hardware L2 settlement routing engine.
+- **Zero-Copy Ingestion:** Integrated the auto-generated `void_protocol` Kaitai Go package to parse raw binary RF frames directly from the `http.Request.Body` without intermediate JSON conversion.
+- **Ed25519 Security Bouncer:** Implemented `internal/core/security/verifier.go` to natively verify hardware PUF signatures against a hardcoded `registry` of orbital assets.
+- **Native Go Packet Generator:** Replaced `gen_packet.py` with `internal/testutils/gen_packet/main.go`. This eliminates Python dependencies and utilizes Go's native `crypto/ed25519` and `hash/crc32` libraries to create mathematically perfect, protocol-compliant test `.bin` files.
+- **Human-Readable Telemetry Logging:** Added a type-switch dispatcher in `ingest.go` to safely cast `kaitai.Struct` interfaces into concrete payloads, printing beautifully formatted JSON and console logs for Heartbeats (L), Invoices (A), Payments (B), and Receipts (C).
+
+### Changed
+- Refactored `ingest.go` to properly handle HTTP request abortion (`c.AbortWithStatusJSON`) when encountering cryptographic failures, preventing double JSON responses.
+- Updated the packet slicing logic in `ingest.go` to anchor the `payloadStart` dynamically based on the KSY `headerSize` (6 bytes for CCSDS, 14 bytes for SNLP) to guarantee accurate cryptographic verification offsets.
+- Migrated project structure to standard Go layouts (`cmd/server/`, `internal/api/`, `internal/core/`).
+
+### Security
+- The Gateway now slices raw byte pointers (`*rawData`) to extract the exact bit-for-bit "Message" needed for `ed25519.Verify`, preventing memory malleability attacks and reducing garbage collection overhead during high-concurrency ingestion.
+- Enforced strict payload length checks before attempting signature extraction to prevent out-of-bounds memory panics.
+
 ## [2.1.4] - 2026-03-01
 ### Added
 - `void_protocol_final.ksy`: Authenticated Clean Room Kaitai Struct spec for dual-header orbital protocol (CCSDS/SNLP), mixed-endian, with full routing and payload dispatch logic.
