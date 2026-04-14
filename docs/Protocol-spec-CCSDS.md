@@ -12,7 +12,7 @@
 >
 > **Optimization:** 64-bit machine cycle alignment
 >
-> **Metric:** 176-Byte Footprint (Optimized)
+> **Metric:** 184-Byte Packet B Footprint (VOID-114B: body aligned + _tail_pad[4], was 172)
 >
 > **Target:** 32/64-bit Hardware
 >
@@ -36,39 +36,80 @@ The Void Protocol facilitates an encrypted settlement layer for trustless Machin
 
 ---
 
-## 2. Packet A: "The Invoice" (68 Bytes)
+## 2. Packet A: "The Invoice" (72 Bytes)
 
 _Broadcast by Sat A. Unsigned public offer of service._
+
+**VOID-114B CHANGE:** The body has grown from 62 to 66 bytes with the addition of `_pad_head[2]` and `_pre_crc[2]` alignment slots. Every critical field (`epoch_ts`, `pos_vec`, `vel_vec`, `sat_id`, `amount`, `crc32`) now lands on its natural alignment boundary. See [`VOID_114B_BODY_ALIGNMENT_2026-04-14.md`](VOID_114B_BODY_ALIGNMENT_2026-04-14.md).
 
 | Offset    | Field       | Type     | Size | Description                                                   |
 | --------- | ----------- | -------- | ---- | ------------------------------------------------------------- |
 | **00-05** | `ccsds_pri` | `u8[6]`  | 6B   | **Big-Endian** Primary Header (APID = Sat A)                  |
-| **06-13** | `epoch_ts`  | `u64`    | 8B   | **Little-Endian** Unix Timestamp / Replay Protection          |
-| **14-37** | `pos_vec`   | `f64[3]` | 24B  | **Little-Endian** GPS Vector (X, Y, Z in IEEE 754 Double)     |
-| **38-49** | `vel_vec`   | `f32[3]` | 12B  | **Little-Endian** Velocity Vector (dX, dY, dZ in IEEE 754)    |
-| **50-53** | `sat_id`    | `u32`    | 4B   | **Little-Endian** Unique Seller Identifier                    |
-| **54-61** | `amount`    | `u64`    | 8B   | **Little-Endian** Cost in lowest denomination (e.g., Satoshi) |
-| **62-63** | `asset_id`  | `u16`    | 2B   | **Little-Endian** Currency Type ID (1=USDC)                   |
-| **64-67** | `crc32`     | `u32`    | 4B   | I**Little-Endian** Integrity Checksum                         |
+| **06-07** | `_pad_head` | `u8[2]`  | 2B   | VOID-114B alignment pad (keeps u64 head 8-aligned)            |
+| **08-15** | `epoch_ts`  | `u64`    | 8B   | **Little-Endian** Unix Timestamp / Replay Protection ✅        |
+| **16-39** | `pos_vec`   | `f64[3]` | 24B  | **Little-Endian** GPS Vector (X, Y, Z in IEEE 754 Double) ✅   |
+| **40-51** | `vel_vec`   | `f32[3]` | 12B  | **Little-Endian** Velocity Vector (dX, dY, dZ in IEEE 754) ✅  |
+| **52-55** | `sat_id`    | `u32`    | 4B   | **Little-Endian** Unique Seller Identifier ✅                  |
+| **56-63** | `amount`    | `u64`    | 8B   | **Little-Endian** Cost in lowest denomination (e.g., Satoshi) ✅ |
+| **64-65** | `asset_id`  | `u16`    | 2B   | **Little-Endian** Currency Type ID (1=USDC)                   |
+| **66-67** | `_pre_crc`  | `u8[2]`  | 2B   | VOID-114B alignment pad (keeps crc32 4-aligned)               |
+| **68-71** | `crc32`     | `u32`    | 4B   | **Little-Endian** Integrity Checksum ✅                        |
 
 ---
 
-## 3. Packet B: "The Encrypted Payment" (176 Bytes)
+## 3. Packet B: "The Encrypted Payment" (184 Bytes)
 
 _Encapsulated payment intent sent by Sat B to the Ground Station._
 
-| Offset      | Field             | Type     | Size | Description                                       |
-| ----------- | ----------------- | -------- | ---- | ------------------------------------------------- |
-| **00-05**   | `ccsds_pri`       | `u8[6]`  | 6B   | **Big-Endian** Header (APID = Sat B). Cleartext   |
-| **06-13**   | `epoch_ts`        | `u64`    | 8B   | **Little-Endian** Sat B Timestamp. Used for Nonce |
-| **14-37**   | `pos_vec`         | `f64[3]` | 24B  | **Little-Endian** Sat B Position. Cleartext       |
-| **38-99**   | **`enc_payload`** | `u8[62]` | 62B  | **ChaCha20 Encrypted Inner Invoice**              |
-| **100-103** | `sat_id`          | `u32`    | 4B   | **Little-Endian** Sat B ID. Cleartext             |
-| **104-107** | `nonce`           | `u32`    | 4B   | **Little-Endian**Counter for Encryption Nonce     |
-| **108-171** | `signature`       | `u8[64]` | 64B  | **PUF Signature** (Signs offsets 00-107)          |
-| **172-175** | `global_crc`      | `u32`    | 4B   | **Little-Endian** Global Packet Integrity Check   |
+**VOID-110 CHANGE:** The 4-byte wire `nonce` field has been **removed**. The ChaCha20 nonce is now a deterministic function of fields already present in the packet. See §3.2 below for the full construction.
 
-### 3.1. Inner Invoice Payload (62 Bytes)
+**VOID-114B CHANGE:** The body has grown from 166 to 178 bytes (174 payload + 4-byte `_tail_pad`). The `_pad_head[2]`, `_pre_sat[2]`, and `_pre_sig[4]` slots place every critical field (`epoch_ts`, `pos_vec`, `sat_id`, `signature`, `global_crc`) on its natural alignment boundary. The `_tail_pad[4]` brings the frame total to **184 bytes (÷8 ✅)** so the SPI DMA burst to the SX1262 lands on a clean Xtensa LX7 word boundary. See [`VOID_114B_BODY_ALIGNMENT_2026-04-14.md`](VOID_114B_BODY_ALIGNMENT_2026-04-14.md).
+
+| Offset      | Field             | Type     | Size | Description                                                         |
+| ----------- | ----------------- | -------- | ---- | ------------------------------------------------------------------- |
+| **00-05**   | `ccsds_pri`       | `u8[6]`  | 6B   | **Big-Endian** Header (APID = Sat B). Cleartext                     |
+| **06-07**   | `_pad_head`       | `u8[2]`  | 2B   | VOID-114B alignment pad                                             |
+| **08-15**   | `epoch_ts`        | `u64`    | 8B   | **Little-Endian** millisecond Unix timestamp. Strictly monotonic. ✅ |
+| **16-39**   | `pos_vec`         | `f64[3]` | 24B  | **Little-Endian** Sat B Position. Cleartext ✅                       |
+| **40-101**  | **`enc_payload`** | `u8[62]` | 62B  | **ChaCha20 Ciphertext** (see §3.2 for nonce construction)           |
+| **102-103** | `_pre_sat`        | `u8[2]`  | 2B   | VOID-114B alignment pad                                             |
+| **104-107** | `sat_id`          | `u32`    | 4B   | **Little-Endian** Sat B ID. Cleartext. Low 4 bytes of the nonce. ✅  |
+| **108-111** | `_pre_sig`        | `u8[4]`  | 4B   | VOID-114B alignment pad                                             |
+| **112-175** | `signature`       | `u8[64]` | 64B  | **Ed25519 Signature** over offsets 00–111 (header + body pre-sig) ✅ |
+| **176-179** | `global_crc`      | `u32`    | 4B   | **Little-Endian** Global Packet Integrity Check ✅                   |
+| **180-183** | `_tail_pad`       | `u8[4]`  | 4B   | VOID-114B frame-total alignment pad (184 ÷8 ✅)                      |
+
+### 3.2 Nonce Derivation (VOID-110)
+
+The ChaCha20-IETF construction requires a 96-bit (12-byte) nonce that is **unique** under a given key. VOID derives this nonce deterministically from fields already present in the packet, so no nonce material is transmitted on the wire:
+
+```
+nonce[12] = sat_id[4] || epoch_ts[8]       // both little-endian
+```
+
+Both sender and receiver can reconstruct the identical nonce from the packet content alone. No state synchronization is required between Sat B and the Ground Station.
+
+**Uniqueness proof:**
+
+1. `sat_id` is a globally unique 32-bit identity. No two assets share an ID.
+2. `epoch_ts` is a 64-bit millisecond Unix timestamp that MUST be strictly monotonic per asset. The firmware enforces this via an NVS-persisted `last_tx_epoch_ms` checkpoint.
+3. The LoRa PHY layer (any spreading factor SF7–SF12 at BW125) cannot emit two Packet Bs from the same asset within 1 ms — airtime for a 184-byte frame is ~216 ms minimum.
+4. Therefore `(sat_id, epoch_ts)` is unique across the entire operational lifetime of the fleet, and so is the derived nonce.
+
+**Why not random?** A random nonce would require transmitting 12 additional bytes on every packet. Deterministic derivation saves 4 bytes net on the wire (after removing the old broken 4-byte field), removes an RNG call from the hot path, and — critically — **makes nonce reuse physically impossible** rather than "statistically unlikely."
+
+**Required guardrails.** This construction is only secure if the monotonic-epoch invariant holds across reboots. The firmware MUST:
+
+- Persist `last_tx_epoch_ms` to NVS every N transmits.
+- On boot, refuse all TX until GPS time is fixed **and** exceeds `last_tx_epoch_ms` by a safety margin.
+- If the clock regresses mid-session, immediately call `wipeSession()` and halt TX.
+- The Ground Station maintains a replay window keyed on `(sat_id, epoch_ts)` and rejects any duplicate tuple.
+
+Without these guardrails a clock rollback (brownout, flash failure, or deliberate tamper) would cause nonce reuse and full keystream recovery. These guardrails are mandatory; they ship with the fix, not as a follow-up.
+
+### 3.3. Inner Invoice Payload (62 Bytes)
+
+### 3.4. Inner Invoice Payload (62 Bytes)
 
 _The Plaintext data recovered from `enc_payload` after decryption._
 
@@ -96,7 +137,7 @@ _Ensures compatibility with commercial ground stations (AWS/KSAT)._
 | **5 - 15**  | **APID**         | 11 bits | **Application Process ID** (Sat ID)        |
 | **16 - 17** | Seq. Flags       | 2 bits  | `11` = Unsegmented                         |
 | **18 - 31** | Seq. Count       | 14 bits | Rolling counter (0-16383)                  |
-| **32 - 47** | Length           | 16 bits | **Total Bytes - 6 - 1** (169 for Packet B) |
+| **32 - 47** | Length           | 16 bits | **Total Bytes - 6 - 1** (177 for Packet B, VOID-114B) |
 
 ### 4.1 APID Naming Domain & Global Identity Extension
 The standard CCSDS APID is restricted to an 11-bit field, yielding a maximum of 2,048 unique identifiers per naming domain. To support a globally scaled Decentralized Physical Infrastructure Network (DePIN) across multiple independent fleets, the VOID Protocol strictly adheres to the CCSDS extension guidelines.
@@ -114,8 +155,10 @@ As per **CCSDS 133.0-B-2 (Space Packet Protocol, Section 2.1.1)** [^1]:
 
 The SDK implements strict idempotency to prevent double-spending and replay attacks.
 
-- **Nonce Tracking:** Client nodes maintain a `last_nonce` register in volatile memory.
-- **Duplicate Rejection:** Any packet with a `nonce` or `epoch_ts` older than 60 seconds or already processed is dropped immediately.
+- **Monotonic Epoch Tracking:** The Ground Station maintains a per-asset `last_epoch_ms` register and rejects any packet whose `epoch_ts` is less-than-or-equal-to the last accepted value for that `sat_id`.
+- **Freshness Window:** Any packet with `|now − epoch_ts| > 60s` is dropped (session TTL horizon).
+- **Replay Cache:** A sliding `(sat_id, epoch_ts)` set keyed with a 24h TTL backstops the monotonic check against out-of-order arrivals.
+- **Sender-Side Guardrail:** Sat B's firmware persists `last_tx_epoch_ms` to NVS and refuses TX until GPS time strictly exceeds the stored value. This protects the deterministic ChaCha20 nonce against clock rollback (see §3.2).
 
 ### 5.2 Store-and-Forward Queue (Sat B)
 

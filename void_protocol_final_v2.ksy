@@ -53,18 +53,18 @@ seq:
       switch-on: payload_len
       cases:
         # --- SHARED PAYLOADS (Identical Body) ---
-        62:  packet_a_body    # Invoice (A)
-        170: packet_b_body    # Payment (B)
+        66:  packet_a_body    # Invoice (A) — VOID-114B: body 62→66 with _pad_head + _pre_crc
+        178: packet_b_body    # Payment (B) — VOID-114B: body 166→174+_tail_pad[4]=178, frame 184/192 (÷8 ✅)
         106: packet_h_body    # Handshake (H)
         98:  packet_c_body    # Receipt (C)
 
         # --- COLLISIONS (Resolved by CCSDS Type Bit) ---
         # Packet D (Telemetry) vs ACK (Command)
         122: dispatch_122
-        
+
         # --- VARIANT PAYLOADS (Padding Differences) ---
         114: packet_ack_body  # ACK (CCSDS - No Tail Pad)
-        34: heartbeat_body # System Heartbeat (SNLP - No Header, Just Body)
+        34: heartbeat_body # System Heartbeat — VOID-114B: reordered, size unchanged
 
 instances:
   magic_peek:
@@ -199,36 +199,73 @@ types:
   # --- PACKET B (Payment) ---
   packet_b_body:
     doc: |
-      Packet B: The Encrypted Payment
+      Packet B: The Encrypted Payment (VOID-110 + VOID-114B)
 
       Encapsulated payment intent sent by Sat B (Mule) to the Ground Station.
 
       ## Encryption Logic
-      - **Enterprise (CCSDS):** Payload is ChaCha20 Poly1305 Encrypted.
-      - **Community (SNLP):** Payload is PLAINTEXT to comply with TinyGS/Amateur radio regulations.
+      - **Enterprise (CCSDS):** Payload is ChaCha20 encrypted with a deterministic
+        12-byte nonce derived as `sat_id || epoch_ts`. The nonce is NOT on the wire.
+      - **Community (SNLP):** Payload is PLAINTEXT to comply with TinyGS/Amateur
+        radio regulations. The ChaCha20 path is disabled.
+
+      ## Nonce Derivation (CCSDS only)
+        nonce[12] = sat_id[4] || epoch_ts[8]     # both little-endian
+      Uniqueness is guaranteed by monotonic millisecond `epoch_ts` and per-asset
+      `sat_id`. See Protocol-spec-CCSDS.md §3.
+
+      ## VOID-114B Body Alignment
+      Body = 178 bytes (174 payload + 4-byte `_tail_pad`). The `_pad_head`,
+      `_pre_sat`, and `_pre_sig` slots push every critical field (epoch,
+      pos_vec, sat_id, signature, global_crc) onto its natural alignment
+      boundary under both CCSDS (H=6) and SNLP (H=14) headers, since
+      6 ≡ 14 (mod 8). The `_tail_pad` brings frame totals to 184 (CCSDS ÷8)
+      and 192 (SNLP ÷64 cache line) for DMA-coalesced SPI bursts to the
+      SX1262 on ESP32-S3 / Heltec LoRa V3 class hardware.
     seq:
+      - id: pad_head
+        size: 2
+        doc: "VOID-114B alignment pad (keeps u64 head aligned under both headers)"
       - id: epoch_ts
         type: u8
+        doc: "Little-Endian millisecond Unix timestamp. Must be strictly monotonic."
       - id: pos_vec
         type: vector_3d
         doc: "Sat B Position Vector (X, Y, Z)"
       - id: enc_payload
         size: 62
         doc: "Inner Invoice. Plaintext if SNLP (Public), ChaCha20 Ciphertext if CCSDS (Private)."
+      - id: pre_sat
+        size: 2
+        doc: "VOID-114B alignment pad (aligns sat_id after 62-byte ciphertext)"
       - id: sat_id
         type: u4
-      - id: nonce
-        type: u4
+        doc: "Sat B identity. First 4 bytes of the derived ChaCha20 nonce."
+      - id: pre_sig
+        size: 4
+        doc: "VOID-114B alignment pad (aligns signature on 8-byte boundary)"
       - id: signature
         size: 64
+        doc: "Ed25519 over (header + body[0..pre_sig end] = 106 body bytes). 8-byte aligned."
       - id: global_crc
         type: u4
+      - id: tail_pad
+        size: 4
+        doc: "VOID-114B tail pad — frame total 184 CCSDS / 192 SNLP (÷8 and ÷64 respectively)"
 
 
   # --- PACKET A (Invoice) ---
   packet_a_body:
-    doc: "The Invoice (62 Bytes Payload)"
+    doc: |
+      The Invoice (66 Bytes Payload)
+
+      VOID-114B: `_pad_head` and `_pre_crc` pads ensure every critical
+      field lands on a natural alignment boundary under both CCSDS (H=6)
+      and SNLP (H=14) headers.
     seq:
+      - id: pad_head
+        size: 2
+        doc: "VOID-114B alignment pad"
       - id: epoch_ts
         type: u8
       - id: pos_vec
@@ -241,6 +278,9 @@ types:
         type: u8
       - id: asset_id
         type: u2
+      - id: pre_crc
+        size: 2
+        doc: "VOID-114B alignment pad"
       - id: crc32
         type: u4
 
@@ -345,39 +385,43 @@ types:
         type: u4
   
   heartbeat_body:
-    doc: "System Heartbeat (Health & Status & GPS)"
+    doc: |
+      System Heartbeat (Health & Status & GPS)
+
+      VOID-114B: Fields reordered so every critical field lands on its
+      natural alignment boundary. Body total is still 34 bytes — the
+      legacy `reserved_interval[2]` field was dropped (unused) and
+      `pad_head` takes its place as the forward-compat slot.
     seq:
+      - id: pad_head
+        size: 2
+        doc: "VOID-114B alignment pad (also serves as forward-compat slot)"
       - id: epoch_ts
         type: u8
         doc: "Timestamp (Unix)"
-      - id: vbatt_mv
-        type: u2
-        doc: "Battery Voltage (mV)"
-      - id: temp_c
-        type: s2
-        doc: "Internal Temp (Centidegrees, e.g. 2500 = 25.00C)"
       - id: pressure_pa
         type: u4
         doc: "Barometric Pressure (Pascals)"
-      - id: sys_state
-        type: u1
-        doc: "State Machine ID (0=Boot, 1=Idle, 2=Tx...)"
-      - id: sat_lock
-        type: u1
-        doc: "GPS Satellite Count"
-        # --- GPS  ---
       - id: lat_fixed
         type: s4
         doc: "Latitude (Scaled by 10^7, e.g. 51500000 = 51.5N)"
       - id: lon_fixed
         type: s4
         doc: "Longitude (Scaled by 10^7, e.g. -120000 = 0.12W)"
-      - id: reserved_interval
-        size: 2
-        doc: "Reserved for 2026 payload expansion"
+      - id: vbatt_mv
+        type: u2
+        doc: "Battery Voltage (mV)"
+      - id: temp_c
+        type: s2
+        doc: "Internal Temp (Centidegrees, e.g. 2500 = 25.00C)"
       - id: gps_speed_cms
         type: u2
         doc: "Ground Speed (cm/s, e.g. 540 = 5.4 m/s)"
-      # -----------------------------------------------
+      - id: sys_state
+        type: u1
+        doc: "State Machine ID (0=Boot, 1=Idle, 2=Tx...)"
+      - id: sat_lock
+        type: u1
+        doc: "GPS Satellite Count"
       - id: crc32
         type: u4

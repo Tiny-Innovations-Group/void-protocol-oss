@@ -111,7 +111,8 @@ func (this *VoidProtocol) Read(io *kaitai.Stream, parent kaitai.Struct, root *Vo
 			return err
 		}
 		this.Body = tmp7
-	case 170:
+	case 178:
+		// VOID-114B: Packet B body = 174 payload + 4-byte _tail_pad = 178. Frame 184/192 (÷8 ✅).
 		tmp8 := NewVoidProtocol_PacketBBody()
 		err = tmp8.Read(this._io, this, this._root)
 		if err != nil {
@@ -119,13 +120,15 @@ func (this *VoidProtocol) Read(io *kaitai.Stream, parent kaitai.Struct, root *Vo
 		}
 		this.Body = tmp8
 	case 34:
+		// VOID-114B: Heartbeat body reordered (fields rearranged, reserved[2] dropped, size unchanged).
 		tmp9 := NewVoidProtocol_HeartbeatBody()
 		err = tmp9.Read(this._io, this, this._root)
 		if err != nil {
 			return err
 		}
 		this.Body = tmp9
-	case 62:
+	case 66:
+		// VOID-114B: Packet A body grew from 62 → 66 (added _pad_head[2] + _pre_crc[2]).
 		tmp10 := NewVoidProtocol_PacketABody()
 		err = tmp10.Read(this._io, this, this._root)
 		if err != nil {
@@ -495,21 +498,24 @@ func (this *VoidProtocol_HeaderSnlp) Read(io *kaitai.Stream, parent *VoidProtoco
 /**
  * System Heartbeat (Health & Status & GPS)
  */
+// VOID-114B: Field order reshuffled to keep every critical field on its
+// natural alignment boundary under H ≡ 6 (mod 8). Legacy ReservedInterval
+// was dropped and its slot is now PadHead.
 type VoidProtocol_HeartbeatBody struct {
-	EpochTs          uint64
-	VbattMv          uint16
-	TempC            int16
-	PressurePa       uint32
-	SysState         uint8
-	SatLock          uint8
-	LatFixed         int32
-	LonFixed         int32
-	ReservedInterval []byte
-	GpsSpeedCms      uint16
-	Crc32            uint32
-	_io              *kaitai.Stream
-	_root            *VoidProtocol
-	_parent          *VoidProtocol
+	PadHead     []byte
+	EpochTs     uint64
+	PressurePa  uint32
+	LatFixed    int32
+	LonFixed    int32
+	VbattMv     uint16
+	TempC       int16
+	GpsSpeedCms uint16
+	SysState    uint8
+	SatLock     uint8
+	Crc32       uint32
+	_io         *kaitai.Stream
+	_root       *VoidProtocol
+	_parent     *VoidProtocol
 }
 
 func NewVoidProtocol_HeartbeatBody() *VoidProtocol_HeartbeatBody {
@@ -525,36 +531,21 @@ func (this *VoidProtocol_HeartbeatBody) Read(io *kaitai.Stream, parent *VoidProt
 	this._parent = parent
 	this._root = root
 
+	tmp35a, err := this._io.ReadBytes(int(2))
+	if err != nil {
+		return err
+	}
+	this.PadHead = tmp35a
 	tmp35, err := this._io.ReadU8le()
 	if err != nil {
 		return err
 	}
 	this.EpochTs = uint64(tmp35)
-	tmp36, err := this._io.ReadU2le()
-	if err != nil {
-		return err
-	}
-	this.VbattMv = uint16(tmp36)
-	tmp37, err := this._io.ReadS2le()
-	if err != nil {
-		return err
-	}
-	this.TempC = int16(tmp37)
 	tmp38, err := this._io.ReadU4le()
 	if err != nil {
 		return err
 	}
 	this.PressurePa = uint32(tmp38)
-	tmp39, err := this._io.ReadU1()
-	if err != nil {
-		return err
-	}
-	this.SysState = tmp39
-	tmp40, err := this._io.ReadU1()
-	if err != nil {
-		return err
-	}
-	this.SatLock = tmp40
 	tmp41, err := this._io.ReadS4le()
 	if err != nil {
 		return err
@@ -565,17 +556,31 @@ func (this *VoidProtocol_HeartbeatBody) Read(io *kaitai.Stream, parent *VoidProt
 		return err
 	}
 	this.LonFixed = int32(tmp42)
-	tmp43, err := this._io.ReadBytes(int(2))
+	tmp36, err := this._io.ReadU2le()
 	if err != nil {
 		return err
 	}
-	tmp43 = tmp43
-	this.ReservedInterval = tmp43
+	this.VbattMv = uint16(tmp36)
+	tmp37, err := this._io.ReadS2le()
+	if err != nil {
+		return err
+	}
+	this.TempC = int16(tmp37)
 	tmp44, err := this._io.ReadU2le()
 	if err != nil {
 		return err
 	}
 	this.GpsSpeedCms = uint16(tmp44)
+	tmp39, err := this._io.ReadU1()
+	if err != nil {
+		return err
+	}
+	this.SysState = tmp39
+	tmp40, err := this._io.ReadU1()
+	if err != nil {
+		return err
+	}
+	this.SatLock = tmp40
 	tmp45, err := this._io.ReadU4le()
 	if err != nil {
 		return err
@@ -627,13 +632,16 @@ func (this *VoidProtocol_HeartbeatBody) Read(io *kaitai.Stream, parent *VoidProt
 /**
  * The Invoice (62 Bytes Payload)
  */
+// VOID-114B: PadHead + PreCrc slots added to keep critical fields aligned.
 type VoidProtocol_PacketABody struct {
+	PadHead []byte
 	EpochTs uint64
 	PosVec  *VoidProtocol_Vector3d
 	VelVec  *VoidProtocol_Vector3f
 	SatId   uint32
 	Amount  uint64
 	AssetId uint16
+	PreCrc  []byte
 	Crc32   uint32
 	_io     *kaitai.Stream
 	_root   *VoidProtocol
@@ -653,6 +661,11 @@ func (this *VoidProtocol_PacketABody) Read(io *kaitai.Stream, parent *VoidProtoc
 	this._parent = parent
 	this._root = root
 
+	tmp46a, err := this._io.ReadBytes(int(2))
+	if err != nil {
+		return err
+	}
+	this.PadHead = tmp46a
 	tmp46, err := this._io.ReadU8le()
 	if err != nil {
 		return err
@@ -685,6 +698,11 @@ func (this *VoidProtocol_PacketABody) Read(io *kaitai.Stream, parent *VoidProtoc
 		return err
 	}
 	this.AssetId = uint16(tmp51)
+	tmp51a, err := this._io.ReadBytes(int(2))
+	if err != nil {
+		return err
+	}
+	this.PreCrc = tmp51a
 	tmp52, err := this._io.ReadU4le()
 	if err != nil {
 		return err
@@ -801,14 +819,19 @@ func (this *VoidProtocol_PacketAckBody) Read(io *kaitai.Stream, parent kaitai.St
  * - **Enterprise (CCSDS):** Payload is ChaCha20 Poly1305 Encrypted.
  * - **Community (SNLP):** Payload is PLAINTEXT to comply with TinyGS/Amateur radio regulations.
  */
+// VOID-110: wire nonce removed — ChaCha20 nonce derived at runtime from sat_id||epoch_ts.
+// VOID-114B: PadHead/PreSat/PreSig slots added to keep every critical field aligned.
 type VoidProtocol_PacketBBody struct {
+	PadHead    []byte
 	EpochTs    uint64
 	PosVec     *VoidProtocol_Vector3d
 	EncPayload []byte
+	PreSat     []byte
 	SatId      uint32
-	Nonce      uint32
+	PreSig     []byte
 	Signature  []byte
 	GlobalCrc  uint32
+	TailPad    []byte
 	_io        *kaitai.Stream
 	_root      *VoidProtocol
 	_parent    *VoidProtocol
@@ -827,6 +850,11 @@ func (this *VoidProtocol_PacketBBody) Read(io *kaitai.Stream, parent *VoidProtoc
 	this._parent = parent
 	this._root = root
 
+	tmp62a, err := this._io.ReadBytes(int(2))
+	if err != nil {
+		return err
+	}
+	this.PadHead = tmp62a
 	tmp63, err := this._io.ReadU8le()
 	if err != nil {
 		return err
@@ -842,29 +870,37 @@ func (this *VoidProtocol_PacketBBody) Read(io *kaitai.Stream, parent *VoidProtoc
 	if err != nil {
 		return err
 	}
-	tmp65 = tmp65
 	this.EncPayload = tmp65
+	tmp65b, err := this._io.ReadBytes(int(2))
+	if err != nil {
+		return err
+	}
+	this.PreSat = tmp65b
 	tmp66, err := this._io.ReadU4le()
 	if err != nil {
 		return err
 	}
 	this.SatId = uint32(tmp66)
-	tmp67, err := this._io.ReadU4le()
+	tmp67, err := this._io.ReadBytes(int(4))
 	if err != nil {
 		return err
 	}
-	this.Nonce = uint32(tmp67)
+	this.PreSig = tmp67
 	tmp68, err := this._io.ReadBytes(int(64))
 	if err != nil {
 		return err
 	}
-	tmp68 = tmp68
 	this.Signature = tmp68
 	tmp69, err := this._io.ReadU4le()
 	if err != nil {
 		return err
 	}
 	this.GlobalCrc = uint32(tmp69)
+	tmp69b, err := this._io.ReadBytes(int(4))
+	if err != nil {
+		return err
+	}
+	this.TailPad = tmp69b
 	return err
 }
 

@@ -64,18 +64,20 @@ static_assert(sizeof(PacketH_t) == SIZE_PACKET_H, "PacketH_t size mismatch");
 
 /**
  * @brief Packet A: The Invoice
- * @size  76 Bytes
- * @cite  Protocol-spec.md
+ * @size  80 Bytes (VOID-114B: body 62→66 with _pad_head + _pre_crc)
+ * @cite  Protocol-spec-SNLP.md / VOID_114B_BODY_ALIGNMENT_2026-04-14.md
  */
 typedef struct __attribute__((packed)) {
-    VoidHeader_t header;        // 00-05: Big-Endian
-    uint64_t     epoch_ts;      // 06-13: Little-Endian
-    double       pos_vec[3];    // 14-37: Little-Endian (IEEE 754 f64)
-    float        vel_vec[3];    // 38-49: Little-Endian (IEEE 754 f32)
-    uint32_t     sat_id;        // 50-53: Little-Endian
-    uint64_t     amount;        // 54-61: Little-Endian
-    uint16_t     asset_id;      // 62-63: Little-Endian
-    uint32_t     crc32;         // 64-67: Little-Endian
+    VoidHeader_t header;        // 00-13: SNLP Header (14B)
+    uint16_t     _pad_head;     // 14-15: Alignment (VOID-114B)
+    uint64_t     epoch_ts;      // 16-23: Little-Endian (8-aligned ✅)
+    double       pos_vec[3];    // 24-47: Little-Endian (IEEE 754 f64, 8-aligned ✅)
+    float        vel_vec[3];    // 48-59: Little-Endian (IEEE 754 f32, 4-aligned ✅)
+    uint32_t     sat_id;        // 60-63: Little-Endian (4-aligned ✅)
+    uint64_t     amount;        // 64-71: Little-Endian (8-aligned ✅)
+    uint16_t     asset_id;      // 72-73: Little-Endian
+    uint16_t     _pre_crc;      // 74-75: Alignment (VOID-114B)
+    uint32_t     crc32;         // 76-79: Little-Endian (4-aligned ✅)
 } PacketA_t;
 
 static_assert(sizeof(PacketA_t) == SIZE_PACKET_A, "PacketA_t size mismatch");
@@ -86,18 +88,28 @@ static_assert(sizeof(PacketA_t) == SIZE_PACKET_A, "PacketA_t size mismatch");
 
 /**
  * @brief Packet B: Encrypted Payment
- * @size  184 Bytes
- * @cite  Protocol-spec.md
+ * @size  192 Bytes (VOID-114B: body 178 = 174 + _tail_pad[4], frame ÷64 ✅)
+ * @cite  Protocol-spec-SNLP.md §3 / VOID_114B_BODY_ALIGNMENT_2026-04-14.md
+ *
+ * VOID-110: nonce is NOT transmitted. SNLP runs in plaintext mode by
+ * default. When VOID_ENCRYPT_SNLP is defined the ChaCha20 nonce is
+ * derived identically to CCSDS: nonce[12] = sat_id[4] || epoch_ts[8].
+ *
+ * VOID-114B: body reshaped so every critical field is naturally aligned
+ * under the 14-byte SNLP header (6 ≡ 14 mod 8).
  */
 typedef struct __attribute__((packed)) {
-    VoidHeader_t header;        // 00-05: Big-Endian
-    uint64_t     epoch_ts;      // 06-13: Little-Endian
-    double       pos_vec[3];    // 14-37: Little-Endian
-    uint8_t      enc_payload[62]; // 38-99: ChaCha20 Encrypted
-    uint32_t     sat_id;        // 100-103: Little-Endian (Cleartext ID)
-    uint32_t     nonce;         // 104-107: Little-Endian
-    uint8_t      signature[64];   // 108-171: PUF Signature
-    uint32_t     global_crc;    // 172-175: Little-Endian
+    VoidHeader_t header;        // 00-13: SNLP Header
+    uint16_t     _pad_head;     // 14-15: Alignment (VOID-114B)
+    uint64_t     epoch_ts;      // 16-23: Little-Endian (8-aligned ✅)
+    double       pos_vec[3];    // 24-47: Little-Endian (8-aligned ✅)
+    uint8_t      enc_payload[62]; // 48-109: ChaCha20 Ciphertext / plaintext
+    uint16_t     _pre_sat;      // 110-111: Alignment (VOID-114B)
+    uint32_t     sat_id;        // 112-115: Little-Endian (4-aligned ✅)
+    uint32_t     _pre_sig;      // 116-119: Alignment (VOID-114B)
+    uint8_t      signature[64];   // 120-183: Ed25519 Signature (8-aligned ✅)
+    uint32_t     global_crc;    // 184-187: Little-Endian (4-aligned ✅)
+    uint8_t      _tail_pad[4]; // 188-191: Tail pad — frame total 192 (÷64 ✅ cache line)
 } PacketB_t;
 
 static_assert(sizeof(PacketB_t) == SIZE_PACKET_B, "PacketB_t size mismatch");
@@ -197,25 +209,27 @@ static_assert(sizeof(PacketD_t) == SIZE_PACKET_D, "PacketD_t size mismatch");
 /*
  * @brief Packet L: Life/Heartbeat
  * @size  40 Bytes (CCSDS) / 48 Bytes (SNLP)
- * @cite  void_protocol.ksy
+ * @cite  VOID_114B_BODY_ALIGNMENT_2026-04-14.md
+ *
+ * VOID-114B: Body reordered so all critical fields land on natural
+ * alignment. The legacy reserved[2] field is dropped (unused) and
+ * _pad_head takes its place as the forward-compat slot. Total frame
+ * size is unchanged.
  */
 typedef struct __attribute__((packed)) {
     VoidHeader_t header;        // Polymorphic (6B or 14B)
-    
-    uint64_t     epoch_ts;      // 00-07: Unix Timestamp
-    uint16_t     vbatt_mv;      // 08-09: Battery mV
-    int16_t      temp_c;        // 10-11: Temp (centidegrees)
-    uint32_t     pressure_pa;   // 12-15: Pressure (Pa)
-    uint8_t      sys_state;     // 16:    State ID
-    uint8_t      sat_lock;      // 17:    GPS Lock Count
-    
-    // --- NEW GPS FIELDS ---
-    int32_t      lat_fixed;     // 18-21: Lat * 10^7
-    int32_t      lon_fixed;     // 22-25: Lon * 10^7
-    uint8_t      reserved[2];   // 26-27: Padding/Reserved
-    uint16_t     gps_speed_cms; // 28-29: Speed cm/s
-    
-    uint32_t     crc32;         // 30-33: Checksum
+
+    uint16_t     _pad_head;     // 00-01: Alignment (VOID-114B)
+    uint64_t     epoch_ts;      // 02-09: Unix ts (8-aligned ✅)
+    uint32_t     pressure_pa;   // 10-13: Pressure Pa (4-aligned ✅)
+    int32_t      lat_fixed;     // 14-17: Lat * 10^7 (4-aligned ✅)
+    int32_t      lon_fixed;     // 18-21: Lon * 10^7 (4-aligned ✅)
+    uint16_t     vbatt_mv;      // 22-23: Battery mV (2-aligned ✅)
+    int16_t      temp_c;        // 24-25: Temp centidegrees (2-aligned ✅)
+    uint16_t     gps_speed_cms; // 26-27: Speed cm/s (2-aligned ✅)
+    uint8_t      sys_state;     // 28:    State ID
+    uint8_t      sat_lock;      // 29:    GPS Lock Count
+    uint32_t     crc32;         // 30-33: Checksum (4-aligned ✅)
 } HeartbeatPacket_t;
 
 static_assert(sizeof(HeartbeatPacket_t) == SIZE_HEARTBEAT_PCK, "HeartbeatPacket_t size mismatch");
