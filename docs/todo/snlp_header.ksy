@@ -7,25 +7,35 @@ meta:
     - ccsds_primary_header
 
 doc: |
-  Space Network Layer Protocol (SNLP) Header — 12 Bytes
-  
+  Space Network Layer Protocol (SNLP) Header — 14 Bytes
+
   Designed for asynchronous, low-bandwidth LoRa links on ISM bands
   (433/868/915 MHz). Structure:
-  
+
     Offset 00-03: Sync Word (0x1D01A5A5) — Frame detection in noise
     Offset 04-09: CCSDS Primary Header (6 bytes, Big-Endian)
-    Offset 10-11: Alignment Pad (2 bytes, 0x0000)
-  
-  DESIGN NOTE (Reconciliation):
-  The original KSY used a 4-byte pad (14B total header) to absorb
-  SNLP tail padding and normalize body sizes across transport tiers.
-  
-  This hardened version restores the 2-byte pad per the SNLP spec
-  document (Section 2). Packet bodies that require trailing padding
-  on SNLP must include it explicitly via conditional tail fields.
-  
-  If the project decides on Option B (inflate header to normalize),
-  change align_pad to size: 4 and update payload_len accordingly.
+    Offset 10-13: Alignment Pad (4 bytes, 0x00000000)
+
+  F-01 RESOLVED (VOID-113/114B, 2026-04-15):
+  Header is 14 bytes (Option B). The 4-byte align_pad is required for
+  32/64-bit cycle optimization and mod-8 congruence with the 6-byte
+  CCSDS header — the only header size that lets both tiers share a
+  single body-layout contract while preserving 64-bit alignment of
+  body fields. See:
+    - docs/Protocol-spec-SNLP.md § 1-2
+    - docs/VOID_114_SNLP_HEADER_ALIGNMENT_DECISION_2026-04-14.md
+    - docs/VOID_114B_BODY_ALIGNMENT_2026-04-14.md
+    - void-core/include/void_packets.h → SIZE_SNLP_HEADER = 14
+
+  LENGTH FIELD SEMANTICS (spec override of CCSDS convention):
+  The `packet_len` field inside the embedded CCSDS portion (SNLP
+  offsets 08-09) reports the body length ONLY — it EXCLUDES the
+  entire 14-byte SNLP header, including the align_pad. This differs
+  from the pure CCSDS convention (where packet_data_length covers
+  everything after the 6-byte primary header). The override is
+  required by Protocol-spec-SNLP.md § 2 and enforced by
+  gateway/test/utils/generate_packets.go::buildHeader which writes
+  `uint16(body_len - 1)` regardless of tier.
 
 seq:
   - id: sync_word
@@ -37,9 +47,10 @@ seq:
     doc: "Standard 6-byte CCSDS 133.0-B-2 Primary Header."
 
   - id: align_pad
-    type: u2
+    type: u4
     valid:
       eq: 0
     doc: |
-      16-bit alignment buffer. MUST be 0x0000.
-      Matches Protocol-spec-SNLP.md Section 2, offsets 10-11.
+      32-bit alignment buffer. MUST be 0x00000000.
+      Matches Protocol-spec-SNLP.md Section 2, offsets 10-13.
+      Required for mod-8 congruence with the 6-byte CCSDS header.

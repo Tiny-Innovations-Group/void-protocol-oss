@@ -134,6 +134,9 @@ TEST(GoldenVectorsTest, PacketCFields) {
 TEST(GoldenVectorsTest, PacketDFields) {
     PacketD_t pkt{};
     ASSERT_TRUE(LoadPacket("packet_d.bin", &pkt));
+    // F-03 (VOID-006): body offset 0 must carry the Packet-D magic byte.
+    EXPECT_EQ(pkt.magic, PACKET_D_MAGIC);
+    EXPECT_EQ(pkt._pad_head, 0u);
     EXPECT_EQ(pkt.downlink_ts, kEpochTsMs);
     EXPECT_EQ(pkt.sat_b_id,    kSatId);
     for (size_t i = 0; i < sizeof(pkt.payload); ++i) {
@@ -145,6 +148,9 @@ TEST(GoldenVectorsTest, PacketDFields) {
 TEST(GoldenVectorsTest, PacketAckFields) {
     PacketAck_t pkt{};
     ASSERT_TRUE(LoadPacket("packet_ack.bin", &pkt));
+    // F-03 (VOID-006): body offset 0 must carry the Packet-ACK magic byte.
+    EXPECT_EQ(pkt.magic, PACKET_ACK_MAGIC);
+    EXPECT_EQ(pkt._pad_a, 0u);
     EXPECT_EQ(pkt.target_tx_id,          0xCAFEBABEu);
     EXPECT_EQ(pkt.status,                1u);
     EXPECT_EQ(pkt.relay_ops.azimuth,     180u);

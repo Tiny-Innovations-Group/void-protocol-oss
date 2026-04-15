@@ -18,18 +18,22 @@ doc: |
   
   CHANGES FROM v2.0 (Pre-Audit):
     C-01 FIX: seq_count mask corrected to 0x3FFF (14-bit).
+    F-01 FIX: SNLP header locked at 14B (Option B, VOID-113/114B).
+              snlp_header.ksy align_pad = 4 bytes. See Protocol-spec-SNLP.md
+              § 1-2 and VOID_114_SNLP_HEADER_ALIGNMENT_DECISION_2026-04-14.md.
     F-02 FIX: Body dispatch uses CCSDS packet_data_length, not _io.size.
+    F-03 FIX: dispatch_122 switches on `magic` byte at body offset 0
+              (0xD0 = Packet D, 0xAC = Packet ACK). Replaces single-bit
+              CCSDS Type-bit trust with an 8-bit Hamming-distance-4
+              discriminant. Absorbed from existing pad bytes — zero
+              impact on frame totals or downstream alignment.
     F-04 FIX: Packet ACK split into SNLP/CCSDS variants (fixed tunnel size).
     K-01 FIX: Modularized via imports.
     K-02 FIX: Enums defined in tig_common_types.
     K-03 FIX: valid constraints on CCSDS version, sync word, alignment pads.
     K-04 FIX: doc-ref converted to YAML list.
-  
-  OPEN ITEMS (Require Project Decision):
-    F-01: SNLP header size — currently 12B (spec-compliant). 
-          If Option B chosen, change snlp_header.ksy pad to 4B.
-    F-03: CRC pre-validation before dispatch_122. Requires application-layer
-          hook — cannot be enforced in Kaitai alone.
+
+  OPEN ITEMS: none.
 
 doc-ref:
   - "https://github.com/Tiny-Innovations-Group/void-protocol-oss/blob/main/docs/Acknowledgment-spec.md"
@@ -64,13 +68,11 @@ seq:
         # --- COLLISION ZONE (Resolved by Type Bit) ---
         122: dispatch_122
 
-        # --- TRANSPORT-VARIANT DISPATCH ---
-        # ACK body size differs by transport:
-        #   SNLP  → body_length includes extra tunnel bytes
-        #   CCSDS → compact tunnel
-        # Both are handled by packet_ack_body with dynamic tunnel sizing.
-        # If formal verification requires fixed bodies, split into two types.
-        114: packet_ack_body
+        # --- TIER-UNIQUE DISPATCH (CCSDS ACK) ---
+        # body_length=114 is CCSDS ACK only (SNLP ACK is 122 and lands in
+        # dispatch_122). Routes directly to the fixed-size CCSDS variant.
+        # F-04 FIX: split from dynamic-sized packet_ack_body (Option B).
+        114: packet_ack_body_ccsds
 
 # ==========================================
 # COMPUTED INSTANCES
@@ -86,26 +88,33 @@ instances:
     doc: "true = SNLP (Community), false = CCSDS (Enterprise)."
 
   # HARDENED: Derive body length from CCSDS packet_data_length field.
-  # This replaces the fragile _io.size dependency.
+  # This replaces the fragile _io.size dependency (F-02 fix).
   #
   # CCSDS packet_data_length = (octets in data field) - 1
-  # data_field_length = packet_data_length + 1  (computed in header)
+  # data_field_length       = packet_data_length + 1 (computed in header)
   #
-  # For SNLP: The CCSDS header inside SNLP reports the length of
-  # everything after itself (6B CCSDS). But the SNLP frame also has
-  # the sync word (4B) and align_pad (2B) before the body.
-  # The CCSDS length field covers: align_pad + body.
-  # So: body_length = data_field_length - 2 (subtract align_pad).
+  # SNLP SPEC OVERRIDE (Protocol-spec-SNLP.md § 2, offsets 08-09):
+  # Inside an SNLP frame, the CCSDS `length` field reports the body
+  # length ONLY — it EXCLUDES the entire 14-byte SNLP header, including
+  # the 4-byte align_pad. This differs from the pure CCSDS convention
+  # (where packet_data_length covers everything after the 6-byte primary
+  # header). The override is required to keep body sizes identical
+  # across tiers and is enforced by the packet generator in
+  # gateway/test/utils/generate_packets.go, which writes
+  # uint16(body_len - 1) regardless of tier.
   #
-  # For CCSDS: body_length = data_field_length directly.
+  # Result: body_length = data_field_length in BOTH tiers. No tier-
+  # specific subtraction needed.
   body_length:
     value: >-
       is_snlp
-      ? (routing_header.as<snlp_header>.ccsds.data_field_length - 2)
+      ? (routing_header.as<snlp_header>.ccsds.data_field_length)
       : (routing_header.as<ccsds_primary_header>.data_field_length)
     doc: |
       Payload body length in octets. Derived from the CCSDS
-      packet_data_length field. Stream-safe: does not depend on _io.size.
+      packet_data_length field (SNLP override applied — the length
+      field excludes the full 14B SNLP header). Stream-safe: does
+      not depend on _io.size.
 
   global_packet_type:
     value: >-
@@ -128,19 +137,34 @@ types:
   dispatch_122:
     doc: |
       Collision resolver for 122-byte bodies.
-      Packet D (Telemetry, Type=0) vs Packet ACK (Command, Type=1).
-      
-      WARNING: This dispatch trusts the CCSDS Type bit. A single
-      bit-flip on the RF link will route to the wrong body type.
-      Application-layer CRC validation MUST occur before acting
-      on the parsed result.
+      Packet D (Delivery) vs Packet ACK SNLP (Command).
+
+      TIER CONSTRAINT: body_length=122 is reachable by CCSDS Packet D
+      (128 − 6 hdr), SNLP Packet D (136 − 14 hdr), and SNLP ACK
+      (136 − 14 hdr). CCSDS ACK body is 114 bytes and is dispatched
+      directly at the root (F-04 fix, Option B), so the ACK branch
+      here is SNLP-only by construction.
+
+      F-03 FIX (VOID-006, 2026-04-15): dispatch now switches on the
+      `magic` byte at body offset 0, NOT on the CCSDS Type bit. The
+      Type bit is a single point of failure (one bit-flip = wrong
+      parse path). The magic byte is an 8-bit discriminant with
+      Hamming distance 4 between 0xD0 and 0xAC — a single RF bit
+      error cannot transform one into the other. An unknown magic
+      value is a hard parse failure and MUST bounce at the gateway
+      ingest boundary before any body-specific interpretation.
     seq:
       - id: content
         type:
-          switch-on: _root.global_packet_type
+          switch-on: magic_peek
           cases:
-            0: packet_d_body
-            1: packet_ack_body
+            0xD0: packet_d_body
+            0xAC: packet_ack_body_snlp
+    instances:
+      magic_peek:
+        pos: 0
+        type: u1
+        doc: "Peek body offset 0 without consuming. Selects body type."
 
   # ==========================================
   # PAYLOAD BODIES (Little-Endian)
@@ -264,10 +288,21 @@ types:
       The Delivery. Transport wrapper used by Sat B to downlink
       Packet C to the Ground Station. Wraps the receipt in a new
       CCSDS/SNLP frame for radio transmission.
+
+      F-03 FIX (VOID-006, 2026-04-15): `magic` at body offset 0 is
+      a packet-type discriminant that protects dispatch_122 against
+      single-bit-flip collisions with Packet ACK SNLP. Value 0xD0
+      identifies this as Delivery. The byte is absorbed from the
+      former 2-byte pad_head (now 1 byte), so body total, frame
+      total, and every subsequent field offset remain unchanged
+      (downlink_ts still lands on the natural 64-bit boundary).
     seq:
+      - id: magic
+        contents: [0xD0]
+        doc: "Packet-D discriminant (F-03 fix). MUST be 0xD0."
       - id: pad_head
-        size: 2
-        doc: "Cycle alignment pad."
+        size: 1
+        doc: "Cycle alignment pad (1 byte after magic absorption)."
       - id: downlink_ts
         type: u8
         doc: "Downlink timestamp."
@@ -284,24 +319,29 @@ types:
         size: 6
         doc: "Final alignment to 122 bytes."
 
-  # --- PACKET ACK: Ground Station Command ---
-  packet_ack_body:
+  # --- PACKET ACK (CCSDS): Ground Station Command, Enterprise Tier ---
+  packet_ack_body_ccsds:
     doc: |
-      Ground Station Acknowledgement / Unlock Command.
-      
+      Ground Station Acknowledgement / Unlock Command — CCSDS tier.
+
+      Total body: 114 bytes (frame 120 = 6B CCSDS header + 114B body).
       Contains Relay Instructions and the encrypted unlock key.
-      
-      Tunnel Sizing:
-        SNLP:  enc_tunnel = 96 bytes (padded for SNLP internal header).
-        CCSDS: enc_tunnel = 88 bytes (compact, standard header).
-      
-      AUDIT NOTE (F-04): This type uses a runtime ternary for
-      enc_tunnel sizing. For formal verification, split into
-      packet_ack_body_snlp and packet_ack_body_ccsds with fixed sizes.
+      enc_tunnel is fixed at 88 bytes (compact, standard CCSDS header).
+
+      F-04 FIX (Option B): split from the former polymorphic packet_ack_body
+      so every field has a compile-time offset. Statically analyzable.
+
+      F-03 FIX (VOID-006, 2026-04-15): `magic` at body offset 0 is a
+      packet-type discriminant. Value 0xAC identifies ACK. Absorbed
+      from the former 2-byte pad_a (now 1 byte). Body total, frame
+      total, and all downstream field offsets unchanged.
     seq:
+      - id: magic
+        contents: [0xAC]
+        doc: "Packet-ACK discriminant (F-03 fix). MUST be 0xAC."
       - id: pad_a
-        size: 2
-        doc: "32/64-bit alignment pad."
+        size: 1
+        doc: "32/64-bit alignment pad (1 byte after magic absorption)."
       - id: target_tx_id
         type: u4
         doc: "Cleartext transaction nonce being acknowledged."
@@ -316,11 +356,60 @@ types:
         type: tig_common_types::relay_ops
         doc: "12-byte Sat B relay instructions."
       - id: enc_tunnel
-        size: "_root.is_snlp ? 96 : 88"
+        size: 88
         doc: |
-          ChaCha20 encrypted tunnel data.
-          SNLP=96B, CCSDS=88B. Dynamic sizing maintained
-          pending formal verification split decision.
+          ChaCha20 encrypted tunnel data. Fixed 88B (CCSDS tier).
+          Decrypted payload is TunnelData_t (see Acknowledgment-spec.md § C).
+      - id: pad_c
+        size: 2
+        doc: "Alignment to CRC boundary."
+      - id: crc32
+        type: u4
+        doc: "Outer checksum."
+
+  # --- PACKET ACK (SNLP): Ground Station Command, Community Tier ---
+  packet_ack_body_snlp:
+    doc: |
+      Ground Station Acknowledgement / Unlock Command — SNLP tier.
+
+      Total body: 122 bytes (frame 136 = 14B SNLP header + 122B body).
+      Contains Relay Instructions and the encrypted unlock key.
+      enc_tunnel is fixed at 96 bytes (padded for SNLP internal header).
+
+      F-04 FIX (Option B): split from the former polymorphic packet_ack_body
+      so every field has a compile-time offset. Statically analyzable.
+
+      F-03 FIX (VOID-006, 2026-04-15): `magic` at body offset 0 is a
+      packet-type discriminant. Value 0xAC identifies ACK and protects
+      dispatch_122 against single-bit-flip collisions with Packet D
+      (which shares body_length=122 in this tier). Absorbed from the
+      former 2-byte pad_a (now 1 byte). Body total, frame total, and
+      all downstream field offsets unchanged.
+    seq:
+      - id: magic
+        contents: [0xAC]
+        doc: "Packet-ACK discriminant (F-03 fix). MUST be 0xAC."
+      - id: pad_a
+        size: 1
+        doc: "32/64-bit alignment pad (1 byte after magic absorption)."
+      - id: target_tx_id
+        type: u4
+        doc: "Cleartext transaction nonce being acknowledged."
+      - id: status
+        type: u1
+        enum: tig_common_types::settlement_status
+        doc: "0x01=Settled, 0xFF=Rejected."
+      - id: pad_b
+        size: 1
+        doc: "Data boundary pad."
+      - id: relay_ops
+        type: tig_common_types::relay_ops
+        doc: "12-byte Sat B relay instructions."
+      - id: enc_tunnel
+        size: 96
+        doc: |
+          ChaCha20 encrypted tunnel data. Fixed 96B (SNLP tier).
+          Decrypted payload is TunnelData_t (see Acknowledgment-spec.md § C).
       - id: pad_c
         size: 2
         doc: "Alignment to CRC boundary."

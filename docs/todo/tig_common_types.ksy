@@ -12,9 +12,9 @@ doc: |
   vectors, signatures, or protocol-defined enumerations.
 
 enums:
+  # asset_id: Stablecoin-only mandate. Extend here for new verified assets.
   asset_id:
     1: usdc
-    doc: "Stablecoin-only mandate. Extend here for new verified assets."
 
   settlement_status:
     0x01: settled

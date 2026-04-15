@@ -126,14 +126,28 @@ There is no CRC pre-check before dispatch. The `global_crc` / `crc32` fields are
 
 ### 2.4 `enc_tunnel` Dynamic Sizing — Variable-Width in Fixed Dispatch
 
-**FAULT F-04 (WARNING): Ternary size breaks formal verification.**
+**FAULT F-04 (WARNING): Ternary size breaks formal verification. — RESOLVED (Option B, 2026-04-15)**
+
+Original defect:
 
 ```yaml
 enc_tunnel:
   size: "_root.is_snlp ? 96 : 88"
 ```
 
-The `packet_ack_body` type is not truly fixed-size. Its memory footprint changes based on the transport layer. In a zero-heap C environment, the struct would need to be defined with the **maximum** size (96 bytes) and a length field to indicate actual occupancy. The KSY's ternary is elegant but non-deterministic from a static analysis perspective.
+The former `packet_ack_body` type was not truly fixed-size — its memory footprint changed based on the transport layer, which defeats static analysis.
+
+**Resolution (VOID-006, Option B).** The polymorphic `packet_ack_body` has been split into two fixed-size sibling types:
+
+- `packet_ack_body_ccsds` — `enc_tunnel: size: 88`, total body = 114B (CCSDS frame 120B).
+- `packet_ack_body_snlp`  — `enc_tunnel: size: 96`, total body = 122B (SNLP frame 136B).
+
+Dispatch is now tier-deterministic without any nested tier-check:
+
+- Root `body` switch `case 114` → `packet_ack_body_ccsds` directly. body_length=114 is reachable only as `CCSDS frame 120 − 6B CCSDS header`, so no ambiguity exists.
+- `dispatch_122` `case 1` → `packet_ack_body_snlp`. CCSDS ACK (body 114) never reaches this dispatcher, so the Type=1 branch is SNLP-only by construction.
+
+Every field in both ACK variants now has a compile-time offset. The wire format is unchanged (120B CCSDS / 136B SNLP frame totals), so golden vectors in `test/vectors/{ccsds,snlp}/packet_ack.bin` require no regeneration. See [docs/todo/void_protocol (1).ksy](docs/todo/void_protocol%20(1).ksy) for the split type definitions.
 
 ---
 
@@ -460,10 +474,10 @@ Key change: `body` now uses `size: _root.body_length` to explicitly bound the su
 | **C-01** | **CRITICAL** | CCSDS Compliance | `seq_count` mask is `0x3FF` (10-bit), should be `0x3FFF` (14-bit). Counter wraps at 1024 instead of 16384. | Change mask to `0x3FFF`. |
 | **C-02** | WARNING | CCSDS Compliance | `version` field parsed but never validated. Non-zero version = unknown protocol revision. | Add `valid: { eq: 0 }`. |
 | **C-03** | WARNING | CCSDS Compliance | `packet_length` / `actual_length` computed but unused for dispatch. Violates self-delimiting packet contract. | Use `data_field_length` for body dispatch. |
-| **F-01** | **CRITICAL** | Spec Divergence | SNLP header is 14B in KSY but 12B in `Protocol-spec-SNLP.md`. The extra 2B absorb `tail_pad` silently. | Reconcile spec: either update the SNLP spec to 14B or fix KSY to 12B and add `tail_pad` to relevant bodies. |
+| **F-01** | ~~**CRITICAL**~~ **RESOLVED** | Spec Divergence | SNLP header was 14B in KSY but 12B in `Protocol-spec-SNLP.md`. The extra 2B absorbed `tail_pad` silently. | **FIXED (Option B, VOID-113/114B, 2026-04-15):** SNLP header locked at 14 bytes. `snlp_header.ksy::align_pad` = 4 bytes. `Protocol-spec-SNLP.md` § 1-2 updated to match. Deployed C++ `SIZE_SNLP_HEADER = 14` in `void-core/include/void_packets.h`. Rationale: mod-8 congruence with the 6-byte CCSDS header preserves a single body-layout contract across tiers. See `VOID_114_SNLP_HEADER_ALIGNMENT_DECISION_2026-04-14.md` and `VOID_114B_BODY_ALIGNMENT_2026-04-14.md`. |
 | **F-02** | **CRITICAL** | Stream Safety | `payload_len` uses `_io.size`. Breaks on concatenated streams, MQTT ingest, and multi-packet files. | Replace with CCSDS `packet_data_length + 1`. |
 | **F-03** | WARNING | Fault Tolerance | `dispatch_122` resolves Packet D vs ACK via Type bit with no CRC pre-check. Single bit-flip = wrong parse path. | Pre-validate outer CRC before dispatch, or add a packet-type magic byte at offset 0 of the body. |
-| **F-04** | WARNING | Formal Verification | `enc_tunnel` size is a runtime ternary (`96 : 88`). Not statically analyzable. | Define two separate ACK body types (`packet_ack_body_snlp`, `packet_ack_body_ccsds`) with fixed sizes. |
+| **F-04** | ~~WARNING~~ **RESOLVED** | Formal Verification | `enc_tunnel` size was a runtime ternary (`96 : 88`). Not statically analyzable. | **FIXED (Option B, VOID-006, 2026-04-15):** split into `packet_ack_body_ccsds` (88B tunnel, 114B body) and `packet_ack_body_snlp` (96B tunnel, 122B body). Root dispatch case 114 → CCSDS variant; `dispatch_122` Type=1 → SNLP variant. Wire format unchanged. See §2.4. |
 | **K-01** | INFO | Kaitai Practice | Monolithic single-file schema. No `imports`. | Decompose per Section 5. |
 | **K-02** | INFO | Kaitai Practice | No `enums` for semantic fields (`status`, `asset_id`, `sys_state`). | Add enums to `tig_common_types.ksy`. |
 | **K-03** | INFO | Kaitai Practice | No `valid` constraints on any parsed fields. | Add constraints per Section 4.2 table. |
