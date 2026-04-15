@@ -157,8 +157,16 @@ func IngestPacket(c *gin.Context) {
 	log.Printf("📥 ADMIT: %s Frame | Size: %d bytes | SatID: %d", tier, packetSize, apid)
 
 	// 3. 🔍 Process Payload Body and Security Checks
+	// VOID-112: reject anything that didn't route to a known body type
+	// (nil Body, truncated frame, or unsupported payload_len). This is
+	// the final bounds gate — refusing before any downstream cast or
+	// settlement logic runs.
 	if !handlePayloadBody(packet.Body, &rawData, c, packetSize) {
-		log.Printf("   ❓ UNKNOWN PAYLOAD BODY TYPE")
+		log.Printf("⛔ BOUNCE: Unknown or truncated payload body")
+		if !c.IsAborted() {
+			c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"error": "Unsupported or truncated Void Protocol frame"})
+		}
+		return
 	}
 
 	// TODO: Hit the Blockchain L2 Settlement here
