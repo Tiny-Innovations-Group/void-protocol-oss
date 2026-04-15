@@ -5,6 +5,7 @@ import (
 	"crypto/ed25519"
 	"encoding/binary"
 	"encoding/hex"
+	"flag"
 	"fmt"
 	"hash/crc32"
 	"log"
@@ -17,37 +18,50 @@ import (
  * -------------------------------------------------------------------------
  * Authority: Tiny Innovation Group Ltd
  * License:   Apache 2.0
- * Status:    Native Go Packet Generator
- * Desc:      Replaces gen_packet.py. Zero external dependencies.
+ * Status:    Native Go Packet Generator (VOID-123 deterministic mode)
+ * Desc:      Emits the 14 golden wire-format vectors consumed by the
+ *            Go (VOID-124) and C++ (VOID-125) regression suites.
  *-------------------------------------------------------------------------*/
 
-const outputDir = "./generated_packets"
+// ------------------------------------------------------------
+// VOID-123 — deterministic golden vector inputs.
+// Any change here invalidates every committed .bin under
+// test/vectors/ and MUST be accompanied by a regenerated,
+// reviewed vector set plus updated C++/Go test assertions.
+// ------------------------------------------------------------
+const (
+	detEpochTsMs uint64 = 1710000100000
+	detSatId     uint32 = 0xCAFEBABE
+	detAmount    uint64 = 420000000
+	detAssetId   uint16 = 1
+	detSeedHex          = "bc1df4fa6e3d7048992f14e655060cbb2190bded9002524c06e7cbb163df15fb"
+)
 
-// Constants
-const syncWord uint32 = 0x1D01A5A5 // SNLP Magic Word
-const apidGround uint32 = 0
-const apidSatA uint32 = 100 // Seller
-const apidSatB uint32 = 101 // Mule/Buyer
+var (
+	detPosVec = [3]float64{7010.0, -11990.0, 560.0}
+	detVelVec = [3]float32{7.5, -0.2, 0.01}
+	detPriv   ed25519.PrivateKey
+)
 
-// PUF Private Key Seeds (32 bytes / 64 hex chars)
-const privHexA = "bc1df4fa6e3d7048992f14e655060cbb2190bded9002524c06e7cbb163df15fb"
-const privHexB = "8994ec3b3d470df7432bd5b74783765822c756c7ff972942a5efdad61473605b"
-
-var privKeyA ed25519.PrivateKey
-var privKeyB ed25519.PrivateKey
+// Wire-format constants
+const (
+	syncWord   uint32 = 0x1D01A5A5
+	apidSatA   uint32 = 100
+	apidSatB   uint32 = 101
+	loraMaxLen        = 255
+)
 
 func init() {
-	// Derive full 64-byte Ed25519 Private Keys from the 32-byte seeds
-	seedA, _ := hex.DecodeString(privHexA)
-	privKeyA = ed25519.NewKeyFromSeed(seedA)
-
-	seedB, _ := hex.DecodeString(privHexB)
-	privKeyB = ed25519.NewKeyFromSeed(seedB)
+	seed, err := hex.DecodeString(detSeedHex)
+	if err != nil {
+		log.Fatalf("bad deterministic seed: %v", err)
+	}
+	detPriv = ed25519.NewKeyFromSeed(seed)
 }
 
-// ==============================================================================
+// ============================================================
 // HELPERS
-// ==============================================================================
+// ============================================================
 
 func writeLE(buf *bytes.Buffer, data interface{}) {
 	if err := binary.Write(buf, binary.LittleEndian, data); err != nil {
@@ -65,7 +79,7 @@ func getCRC(data []byte) uint32 {
 	return crc32.ChecksumIEEE(data)
 }
 
-// buildHeader constructs either a 14-byte SNLP or 6-byte CCSDS header
+// buildHeader constructs either a 14-byte SNLP or 6-byte CCSDS header.
 func buildHeader(isSnlp bool, payloadLen int, apid uint32, isCmd bool) []byte {
 	var buf bytes.Buffer
 
@@ -82,33 +96,31 @@ func buildHeader(isSnlp bool, payloadLen int, apid uint32, isCmd bool) []byte {
 
 	idFieldVal := (version << 13) | (pktType << 12) | (secFlag << 11) | uint16(apid&0x7FF)
 	writeBE(&buf, idFieldVal)
-	writeBE(&buf, uint16(0xC000))       // Seq Count
-	writeBE(&buf, uint16(payloadLen-1)) // Packet Length
+	writeBE(&buf, uint16(0xC000))
+	writeBE(&buf, uint16(payloadLen-1))
 
 	if isSnlp {
-		writeBE(&buf, uint32(0)) // 4-Byte Alignment Pad
+		writeBE(&buf, uint32(0)) // 4-byte alignment pad
 	}
 
 	return buf.Bytes()
 }
 
-// ==============================================================================
-// BODY GENERATORS
-// ==============================================================================
+// ============================================================
+// BODY GENERATORS — all deterministic (VOID-123)
+// ============================================================
 
 func genPacketA(isSnlp bool) []byte {
-	// VOID-114B: Packet A body is 66 bytes (was 62). Added _pad_head[2] at
-	// body offset 0 and _pre_crc[2] between asset_id and crc32 so every
-	// critical field lands on its natural alignment boundary.
+	// VOID-114B: Packet A body is 66 bytes (PadHead + fields + PreCrc + CRC).
 	var body bytes.Buffer
-	body.Write([]byte{0x00, 0x00})                        // PadHead (VOID-114B)
-	writeLE(&body, uint64(1710000000))                    // EpochTs
-	writeLE(&body, []float64{7000.12, -12000.45, 550.78}) // PosVec
-	writeLE(&body, []float32{7.5, -0.2, 0.01})            // VelVec
-	writeLE(&body, apidSatA)                              // SatId
-	writeLE(&body, uint64(420000000))                     // Amount
-	writeLE(&body, uint16(1))                             // AssetId
-	body.Write([]byte{0x00, 0x00})                        // PreCrc (VOID-114B)
+	body.Write([]byte{0x00, 0x00})   // PadHead (VOID-114B)
+	writeLE(&body, detEpochTsMs)     // EpochTs
+	writeLE(&body, detPosVec[:])     // PosVec (24B)
+	writeLE(&body, detVelVec[:])     // VelVec (12B)
+	writeLE(&body, detSatId)         // SatId
+	writeLE(&body, detAmount)        // Amount
+	writeLE(&body, detAssetId)       // AssetId
+	body.Write([]byte{0x00, 0x00})   // PreCrc (VOID-114B)
 
 	header := buildHeader(isSnlp, 66, apidSatA, false)
 	crc := getCRC(append(header, body.Bytes()...))
@@ -118,53 +130,47 @@ func genPacketA(isSnlp bool) []byte {
 }
 
 func genPacketB(isSnlp bool) []byte {
-	// VOID-110 + VOID-114B: Packet B body is now 178 bytes (174 payload + 4-byte tail pad).
-	//   • VOID-110 removed the 4-byte wire nonce (ChaCha20 nonce is derived
-	//     from sat_id || epoch_ts at runtime).
-	//   • VOID-114B added three alignment pads: _pad_head[2] at body 0,
-	//     _pre_sat[2] between enc_payload and sat_id, _pre_sig[4] between
-	//     sat_id and signature. _tail_pad[4] brings frame totals to 184
-	//     CCSDS (÷8 ✅) and 192 SNLP (÷64 ✅ cache line).
-	// The signature still covers (header + body[0..105]) = 106 body bytes.
+	// VOID-110 + VOID-114B: body = 178 bytes. Signature covers
+	// header + body[0..105]. Nonce is derived from (sat_id||epoch_ts),
+	// never transmitted.
 	var body bytes.Buffer
-	body.Write([]byte{0x00, 0x00})                     // PadHead (VOID-114B)
-	writeLE(&body, uint64(1710000100))                 // EpochTs (ms)
-	writeLE(&body, []float64{7010.0, -11990.0, 560.0}) // PosVec
+	body.Write([]byte{0x00, 0x00}) // PadHead
+	writeLE(&body, detEpochTsMs)   // EpochTs
+	writeLE(&body, detPosVec[:])   // PosVec (24B)
 
-	// Structured EncPayload (62 Bytes) — plaintext under SNLP per spec.
+	// Structured enc_payload (62B) — plaintext under SNLP per spec.
 	var enc bytes.Buffer
-	writeLE(&enc, uint64(1710000000))     // InvoiceTs
-	writeLE(&enc, uint32(420000000))      // Amount
-	writeLE(&enc, uint16(1))              // AssetId
-	enc.Write([]byte("PAYMENT_INTENT"))   // Intent string
-	enc.Write(make([]byte, 62-enc.Len())) // Pad to 62
+	writeLE(&enc, detEpochTsMs)         // InvoiceTs
+	writeLE(&enc, uint32(detAmount))    // Amount (u32 slot)
+	writeLE(&enc, detAssetId)           // AssetId
+	enc.Write([]byte("PAYMENT_INTENT")) // Intent string
+	enc.Write(make([]byte, 62-enc.Len()))
 	body.Write(enc.Bytes())
 
-	body.Write([]byte{0x00, 0x00}) // PreSat (VOID-114B)
-	writeLE(&body, apidSatB)       // SatId
-	body.Write(make([]byte, 4))    // PreSig (VOID-114B)
+	body.Write([]byte{0x00, 0x00}) // PreSat
+	writeLE(&body, detSatId)       // SatId
+	body.Write(make([]byte, 4))    // PreSig
 
-	// Signature scope: header + everything before the signature field.
 	header := buildHeader(isSnlp, 178, apidSatB, false)
 	bodyBeforeSig := body.Bytes()
 	if len(bodyBeforeSig) != 106 {
 		log.Fatalf("FATAL: Packet B pre-sig body is %d bytes, expected 106", len(bodyBeforeSig))
 	}
-	signature := ed25519.Sign(privKeyB, append(append([]byte{}, header...), bodyBeforeSig...))
+	signature := ed25519.Sign(detPriv, append(append([]byte{}, header...), bodyBeforeSig...))
 	body.Write(signature)
 
 	crc := getCRC(append(header, body.Bytes()...))
 	writeLE(&body, crc)
-	body.Write(make([]byte, 4)) // TailPad (VOID-114B: frame ÷8 / ÷64)
+	body.Write(make([]byte, 4)) // TailPad (VOID-114B)
 
 	return append(header, body.Bytes()...)
 }
 
 func genPacketH(isSnlp bool) []byte {
-	// Packet H: Handshake (106 Bytes)
+	// Packet H: Handshake (106B body).
 	var msg bytes.Buffer
-	writeLE(&msg, uint16(900))        // SessionTtl
-	writeLE(&msg, uint64(1710000200)) // Timestamp
+	writeLE(&msg, uint16(900))   // SessionTtl
+	writeLE(&msg, detEpochTsMs)  // Timestamp
 
 	pubKey := make([]byte, 32)
 	for i := range pubKey {
@@ -172,24 +178,23 @@ func genPacketH(isSnlp bool) []byte {
 	}
 	msg.Write(pubKey) // EphPubKey
 
-	// Sign
-	signature := ed25519.Sign(privKeyB, msg.Bytes())
-	msg.Write(signature) // No CRC for Handshake
+	signature := ed25519.Sign(detPriv, msg.Bytes())
+	msg.Write(signature)
 
 	header := buildHeader(isSnlp, 106, apidSatB, false)
 	return append(header, msg.Bytes()...)
 }
 
 func genPacketC(isSnlp bool) []byte {
-	// Packet C: Receipt (98 Bytes)
+	// Packet C: Receipt (98B body).
 	var msg bytes.Buffer
 	msg.Write([]byte{0x00, 0x00})             // PadHead
-	writeLE(&msg, uint64(1710000300))         // ExecTime
+	writeLE(&msg, detEpochTsMs)               // ExecTime
 	writeLE(&msg, uint64(0xDEADBEEFCAFEBABE)) // EncTxId
 	writeLE(&msg, uint8(1))                   // EncStatus
 	msg.Write(make([]byte, 7))                // PadSig
 
-	signature := ed25519.Sign(privKeyA, msg.Bytes())
+	signature := ed25519.Sign(detPriv, msg.Bytes())
 
 	var fullBody bytes.Buffer
 	fullBody.Write(msg.Bytes())
@@ -204,11 +209,11 @@ func genPacketC(isSnlp bool) []byte {
 }
 
 func genPacketD(isSnlp bool) []byte {
-	// Packet D: Delivery (122 Bytes)
+	// Packet D: Delivery (122B body).
 	var msg bytes.Buffer
-	msg.Write([]byte{0x00, 0x00})     // PadHead
-	writeLE(&msg, uint64(1710000400)) // DownlinkTs
-	writeLE(&msg, apidSatB)           // SatBId
+	msg.Write([]byte{0x00, 0x00}) // PadHead
+	writeLE(&msg, detEpochTsMs)   // DownlinkTs
+	writeLE(&msg, detSatId)       // SatBId
 
 	payload := make([]byte, 98)
 	for i := range payload {
@@ -225,7 +230,7 @@ func genPacketD(isSnlp bool) []byte {
 }
 
 func genPacketAck(isSnlp bool) []byte {
-	// Packet ACK: Command (114B CCSDS, 122B SNLP)
+	// Packet ACK: 114B body (CCSDS) / 122B body (SNLP).
 	tunnelSize := 88
 	payloadLen := 114
 	if isSnlp {
@@ -260,20 +265,18 @@ func genPacketAck(isSnlp bool) []byte {
 }
 
 func genPacketL(isSnlp bool) []byte {
-	// VOID-114B: Heartbeat body is still 34 bytes but field order has
-	// changed so every critical field is naturally aligned. The legacy
-	// `reserved[2]` field is dropped; its slot is now `pad_head`.
+	// Packet L (heartbeat / LoRa beacon): 34B body (VOID-114B).
 	var msg bytes.Buffer
-	msg.Write([]byte{0x00, 0x00})     // PadHead (VOID-114B)
-	writeLE(&msg, uint64(1710000500)) // EpochTs
-	writeLE(&msg, uint32(100800))     // PressurePa
-	writeLE(&msg, int32(515000000))   // LatFixed
-	writeLE(&msg, int32(-128000))     // LonFixed
-	writeLE(&msg, uint16(4100))       // VbattMv
-	writeLE(&msg, int16(2300))        // TempC
-	writeLE(&msg, uint16(600))        // GpsSpeedCms
-	writeLE(&msg, uint8(3))           // SysState
-	writeLE(&msg, uint8(8))           // SatLock
+	msg.Write([]byte{0x00, 0x00})   // PadHead
+	writeLE(&msg, detEpochTsMs)     // EpochTs
+	writeLE(&msg, uint32(100800))   // PressurePa
+	writeLE(&msg, int32(515000000)) // LatFixed
+	writeLE(&msg, int32(-128000))   // LonFixed
+	writeLE(&msg, uint16(4100))     // VbattMv
+	writeLE(&msg, int16(2300))      // TempC
+	writeLE(&msg, uint16(600))      // GpsSpeedCms
+	writeLE(&msg, uint8(3))         // SysState
+	writeLE(&msg, uint8(8))         // SatLock
 
 	header := buildHeader(isSnlp, 34, apidSatB, false)
 	crc := getCRC(append(header, msg.Bytes()...))
@@ -282,43 +285,94 @@ func genPacketL(isSnlp bool) []byte {
 	return append(header, msg.Bytes()...)
 }
 
-// ==============================================================================
-// MAIN EXECUTION
-// ==============================================================================
+// ============================================================
+// MAIN — VOID-123 deterministic golden vector emission
+// ============================================================
+
+type packetSpec struct {
+	file  string
+	fn    func(bool) []byte
+	ccsds int
+	snlp  int
+}
+
+var goldenPackets = []packetSpec{
+	{"packet_a.bin", genPacketA, 72, 80},
+	{"packet_b.bin", genPacketB, 184, 192},
+	{"packet_c.bin", genPacketC, 104, 112},
+	{"packet_d.bin", genPacketD, 128, 136},
+	{"packet_h.bin", genPacketH, 112, 120},
+	{"packet_ack.bin", genPacketAck, 120, 136},
+	{"packet_l.bin", genPacketL, 40, 48},
+}
+
+var tiers = []struct {
+	name   string
+	isSnlp bool
+}{
+	{"ccsds", false},
+	{"snlp", true},
+}
 
 func main() {
-	if err := os.MkdirAll(outputDir, 0755); err != nil {
-		log.Fatalf("Failed to create output dir: %v", err)
+	deterministic := flag.Bool("deterministic", false, "Emit VOID-123 golden wire-format vectors (required).")
+	outDir := flag.String("out", "test/vectors", "Output directory for golden vectors.")
+	flag.Parse()
+
+	if !*deterministic {
+		fmt.Fprintln(os.Stderr, "generate_packets: --deterministic is required (see VOID-123).")
+		fmt.Fprintln(os.Stderr, "  Usage: go run gateway/test/utils/generate_packets.go --deterministic [--out test/vectors]")
+		os.Exit(2)
 	}
 
-	generators := []struct {
-		name string
-		fn   func(bool) []byte
-	}{
-		{"packet_a_invoice", genPacketA},
-		{"packet_b_payment", genPacketB},
-		{"packet_h_handshake", genPacketH},
-		{"packet_c_receipt", genPacketC},
-		{"packet_d_delivery", genPacketD},
-		{"packet_ack_command", genPacketAck},
-		{"packet_l_heartbeat", genPacketL},
+	if err := writeGoldenVectors(*outDir); err != nil {
+		log.Fatalf("%v", err)
+	}
+}
+
+func writeGoldenVectors(root string) error {
+	for _, t := range tiers {
+		dir := filepath.Join(root, t.name)
+		if err := os.MkdirAll(dir, 0755); err != nil {
+			return fmt.Errorf("mkdir %s: %w", dir, err)
+		}
 	}
 
-	fmt.Printf("--- Generating Native Go Packets in '%s/' ---\n", outputDir)
-
-	for _, g := range generators {
-		// SNLP
-		snlpData := g.fn(true)
-		snlpPath := filepath.Join(outputDir, fmt.Sprintf("void_%s_snlp.bin", g.name))
-		os.WriteFile(snlpPath, snlpData, 0644)
-		fmt.Printf("[%s] SNLP: %d bytes -> %s\n", g.name, len(snlpData), snlpPath)
-
-		// CCSDS
-		ccsdsData := g.fn(false)
-		ccsdsPath := filepath.Join(outputDir, fmt.Sprintf("void_%s_ccsds.bin", g.name))
-		os.WriteFile(ccsdsPath, ccsdsData, 0644)
-		fmt.Printf("[%s] CCSDS: %d bytes -> %s\n", g.name, len(ccsdsData), ccsdsPath)
+	fmt.Printf("VOID-123: writing deterministic golden vectors to %s/\n", root)
+	for _, p := range goldenPackets {
+		for _, t := range tiers {
+			data := p.fn(t.isSnlp)
+			want := p.ccsds
+			if t.isSnlp {
+				want = p.snlp
+			}
+			if err := verifyVector(t.name, p.file, data, want); err != nil {
+				return err
+			}
+			path := filepath.Join(root, t.name, p.file)
+			if err := os.WriteFile(path, data, 0644); err != nil {
+				return fmt.Errorf("write %s: %w", path, err)
+			}
+			fmt.Printf("  %-14s  %-6s  %4d bytes\n", p.file, t.name, len(data))
+		}
 	}
+	fmt.Printf("VOID-123: 14 golden vectors written.\n")
+	return nil
+}
 
-	fmt.Println("\n✅ Generation Complete. You may delete gen_packet.py.")
+func verifyVector(tier, file string, data []byte, want int) error {
+	n := len(data)
+	if n != want {
+		return fmt.Errorf("%s/%s: got %d bytes, want %d", tier, file, n, want)
+	}
+	if n%4 != 0 {
+		return fmt.Errorf("%s/%s: %d bytes fails %%4==0 (32-bit alignment)", tier, file, n)
+	}
+	if n%8 != 0 {
+		return fmt.Errorf("%s/%s: %d bytes fails %%8==0 (64-bit alignment)", tier, file, n)
+	}
+	if n > loraMaxLen {
+		return fmt.Errorf("%s/%s: %d bytes exceeds LoRa %d-byte ceiling", tier, file, n, loraMaxLen)
+	}
+	return nil
 }
