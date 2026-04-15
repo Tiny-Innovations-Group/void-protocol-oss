@@ -24,8 +24,8 @@
 
 
     #define SIZE_CCSDS_HEADER       6       // CCSDS Primary Header
-    #define SIZE_PACKET_A           68      // Invoice
-    #define SIZE_PACKET_B           176     // Payment
+    #define SIZE_PACKET_A           72      // Invoice (VOID-114B: body 62→66, was 68)
+    #define SIZE_PACKET_B           184     // Payment (VOID-114B: body 174 + _tail_pad[4] = 178 → 184 frame, ÷8 ✅)
     #define SIZE_PACKET_C           104     // Receipt
     #define SIZE_PACKET_D           128     // Delivery
     #define SIZE_PACKET_H           112     // Handshake
@@ -42,8 +42,8 @@
 
     // Define the expected sizes (Original + 8 Bytes)
     #define SIZE_SNLP_HEADER        14      // SNLP Header
-    #define SIZE_PACKET_A           76      // Invoice
-    #define SIZE_PACKET_B           184     // Payment
+    #define SIZE_PACKET_A           80      // Invoice (VOID-114B: body 62→66, was 76)
+    #define SIZE_PACKET_B           192     // Payment (VOID-114B: body 174 + _tail_pad[4] = 178 → 192 frame, ÷64 ✅)
     #define SIZE_PACKET_C           112     // Receipt
     #define SIZE_PACKET_D           136     // Delivery
     #define SIZE_PACKET_H           120     // Handshake

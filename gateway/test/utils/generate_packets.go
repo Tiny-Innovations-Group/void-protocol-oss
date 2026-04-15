@@ -97,16 +97,20 @@ func buildHeader(isSnlp bool, payloadLen int, apid uint32, isCmd bool) []byte {
 // ==============================================================================
 
 func genPacketA(isSnlp bool) []byte {
-	// Packet A: Invoice (62 Bytes)
+	// VOID-114B: Packet A body is 66 bytes (was 62). Added _pad_head[2] at
+	// body offset 0 and _pre_crc[2] between asset_id and crc32 so every
+	// critical field lands on its natural alignment boundary.
 	var body bytes.Buffer
+	body.Write([]byte{0x00, 0x00})                        // PadHead (VOID-114B)
 	writeLE(&body, uint64(1710000000))                    // EpochTs
 	writeLE(&body, []float64{7000.12, -12000.45, 550.78}) // PosVec
 	writeLE(&body, []float32{7.5, -0.2, 0.01})            // VelVec
 	writeLE(&body, apidSatA)                              // SatId
 	writeLE(&body, uint64(420000000))                     // Amount
 	writeLE(&body, uint16(1))                             // AssetId
+	body.Write([]byte{0x00, 0x00})                        // PreCrc (VOID-114B)
 
-	header := buildHeader(isSnlp, 62, apidSatA, false)
+	header := buildHeader(isSnlp, 66, apidSatA, false)
 	crc := getCRC(append(header, body.Bytes()...))
 	writeLE(&body, crc)
 
@@ -114,39 +118,46 @@ func genPacketA(isSnlp bool) []byte {
 }
 
 func genPacketB(isSnlp bool) []byte {
-	// Packet B: Payment (170 Bytes)
-	var msg bytes.Buffer
-	writeLE(&msg, uint64(1710000100))                 // EpochTs
-	writeLE(&msg, []float64{7010.0, -11990.0, 560.0}) // PosVec
+	// VOID-110 + VOID-114B: Packet B body is now 178 bytes (174 payload + 4-byte tail pad).
+	//   • VOID-110 removed the 4-byte wire nonce (ChaCha20 nonce is derived
+	//     from sat_id || epoch_ts at runtime).
+	//   • VOID-114B added three alignment pads: _pad_head[2] at body 0,
+	//     _pre_sat[2] between enc_payload and sat_id, _pre_sig[4] between
+	//     sat_id and signature. _tail_pad[4] brings frame totals to 184
+	//     CCSDS (÷8 ✅) and 192 SNLP (÷64 ✅ cache line).
+	// The signature still covers (header + body[0..105]) = 106 body bytes.
+	var body bytes.Buffer
+	body.Write([]byte{0x00, 0x00})                     // PadHead (VOID-114B)
+	writeLE(&body, uint64(1710000100))                 // EpochTs (ms)
+	writeLE(&body, []float64{7010.0, -11990.0, 560.0}) // PosVec
 
-	// Structured EncPayload (62 Bytes)
+	// Structured EncPayload (62 Bytes) — plaintext under SNLP per spec.
 	var enc bytes.Buffer
 	writeLE(&enc, uint64(1710000000))     // InvoiceTs
 	writeLE(&enc, uint32(420000000))      // Amount
 	writeLE(&enc, uint16(1))              // AssetId
 	enc.Write([]byte("PAYMENT_INTENT"))   // Intent string
 	enc.Write(make([]byte, 62-enc.Len())) // Pad to 62
-	msg.Write(enc.Bytes())
+	body.Write(enc.Bytes())
 
-	writeLE(&msg, apidSatB)       // SatId
-	writeLE(&msg, uint32(123456)) // Nonce
+	body.Write([]byte{0x00, 0x00}) // PreSat (VOID-114B)
+	writeLE(&body, apidSatB)       // SatId
+	body.Write(make([]byte, 4))    // PreSig (VOID-114B)
 
-	// The message we sign is EXACTLY these first 102 bytes.
-	messageToSign := msg.Bytes()
-
-	if len(messageToSign) != 102 {
-		log.Fatalf("FATAL: Packet B message is %d bytes, expected 102", len(messageToSign))
+	// Signature scope: header + everything before the signature field.
+	header := buildHeader(isSnlp, 178, apidSatB, false)
+	bodyBeforeSig := body.Bytes()
+	if len(bodyBeforeSig) != 106 {
+		log.Fatalf("FATAL: Packet B pre-sig body is %d bytes, expected 106", len(bodyBeforeSig))
 	}
+	signature := ed25519.Sign(privKeyB, append(append([]byte{}, header...), bodyBeforeSig...))
+	body.Write(signature)
 
-	// Sign the first 102 bytes
-	signature := ed25519.Sign(privKeyB, messageToSign)
-	msg.Write(signature)
+	crc := getCRC(append(header, body.Bytes()...))
+	writeLE(&body, crc)
+	body.Write(make([]byte, 4)) // TailPad (VOID-114B: frame ÷8 / ÷64)
 
-	header := buildHeader(isSnlp, 170, apidSatB, false)
-	crc := getCRC(append(header, msg.Bytes()...))
-	writeLE(&msg, crc)
-
-	return append(header, msg.Bytes()...)
+	return append(header, body.Bytes()...)
 }
 
 func genPacketH(isSnlp bool) []byte {
@@ -249,18 +260,20 @@ func genPacketAck(isSnlp bool) []byte {
 }
 
 func genPacketL(isSnlp bool) []byte {
-	// Packet L: Heartbeat (34 Bytes)
+	// VOID-114B: Heartbeat body is still 34 bytes but field order has
+	// changed so every critical field is naturally aligned. The legacy
+	// `reserved[2]` field is dropped; its slot is now `pad_head`.
 	var msg bytes.Buffer
+	msg.Write([]byte{0x00, 0x00})     // PadHead (VOID-114B)
 	writeLE(&msg, uint64(1710000500)) // EpochTs
-	writeLE(&msg, uint16(4100))       // VbattMv
-	writeLE(&msg, int16(2300))        // TempC
 	writeLE(&msg, uint32(100800))     // PressurePa
-	writeLE(&msg, uint8(3))           // SysState
-	writeLE(&msg, uint8(8))           // SatLock
 	writeLE(&msg, int32(515000000))   // LatFixed
 	writeLE(&msg, int32(-128000))     // LonFixed
-	msg.Write([]byte{0x00, 0x00})     // Reserved
+	writeLE(&msg, uint16(4100))       // VbattMv
+	writeLE(&msg, int16(2300))        // TempC
 	writeLE(&msg, uint16(600))        // GpsSpeedCms
+	writeLE(&msg, uint8(3))           // SysState
+	writeLE(&msg, uint8(8))           // SatLock
 
 	header := buildHeader(isSnlp, 34, apidSatB, false)
 	crc := getCRC(append(header, msg.Bytes()...))

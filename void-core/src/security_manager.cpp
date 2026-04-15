@@ -11,15 +11,27 @@
 
 #include "security_manager.h"
 #include <sodium.h>
+#include <cstddef>
 #include <cstring>
 
 SecurityManager Security;
 
-SecurityManager::SecurityManager() : _state(SESSION_IDLE) {}
+SecurityManager::SecurityManager()
+    : _state(SESSION_IDLE),
+      _session_start_ts(0),
+      _session_ttl(0),
+      _last_tx_epoch_ms(0),
+      _gps_time_valid(false) {}
 
 
 bool SecurityManager::begin() {
     if (sodium_init() < 0) return false;
+    // TODO(VOID-110): Reload _last_tx_epoch_ms from NVS here.
+    //   e.g. Preferences prefs; prefs.begin("void", true);
+    //        _last_tx_epoch_ms = prefs.getULong64("last_epoch_ms", 0);
+    //        prefs.end();
+    // The main loop is responsible for calling setGpsTimeValid(true) only
+    // once GPS time is fixed AND exceeds _last_tx_epoch_ms by a safety margin.
 
     // Simulate Unique Factory Injected PUFs based on Role
     const char* env_key;
@@ -111,32 +123,55 @@ bool SecurityManager::processHandshakeResponse(const PacketH_t& pkt_in) {
 }
 
 // --- PHASE 3: ENCRYPT PACKET B (Payment) ---
-void SecurityManager::encryptPacketB(PacketB_t& pkt, const uint8_t* payload_in, size_t len) {
-    if (_state != SESSION_ACTIVE) return;
+//
+// VOID-110: Deterministic nonce construction.
+//
+//   nonce[12] = sat_id[4] || epoch_ts[8]   (both little-endian)
+//
+// No randomness is consumed and no nonce is transmitted on the wire — the
+// receiver reconstructs the identical 12 bytes from fields already present in
+// the packet. Uniqueness is enforced by:
+//   1. Monotonic epoch_ts (ms since Unix epoch). Guarded by NVS + GPS gate.
+//   2. Per-asset sat_id (no two assets share an ID).
+//   3. LoRa PHY rate limit: a single asset cannot transmit two Packet Bs
+//      within the same millisecond under any spreading factor.
+//
+// See Protocol-spec-CCSDS.md §3 "Nonce Derivation" for the full proof.
+bool SecurityManager::encryptPacketB(PacketB_t& pkt, const uint8_t* payload_in, size_t len) {
+    if (_state != SESSION_ACTIVE) return false;
+    if (!_gps_time_valid) return false;                    // GPS gate
+    if (len > sizeof(pkt.enc_payload)) return false;
+    if (pkt.epoch_ts <= _last_tx_epoch_ms) return false;   // monotonic guardrail
 
-    // 1. Generate Nonce (Random 12 bytes) or Counter-based
+    // 1. Derive the 12-byte nonce from fields already in the packet.
     uint8_t nonce[12];
-    randombytes_buf(nonce, 12);
-    
-    // Copy Nonce to packet (4 bytes used in struct, usually extended in prod)
-    // For MVP struct `nonce` is u32, so we use first 4 bytes
-    uint32_t safe_nonce;
-    memcpy(&safe_nonce, nonce, 4); 
-    pkt.nonce = safe_nonce;
+    memcpy(nonce,     &pkt.sat_id,   4);   // LE u32
+    memcpy(nonce + 4, &pkt.epoch_ts, 8);   // LE u64
 
-    // 2. Encrypt (ChaCha20-Poly1305 or XChaCha20)
-    // We use ChaCha20 stream (no auth tag here, as Packet B has Outer Sig)
+    // 2. ChaCha20 stream encrypt. The outer Ed25519 signature provides
+    //    authenticity; we intentionally do not use Poly1305 here because the
+    //    signature covers (header + body − signature_suffix).
     crypto_stream_chacha20_xor(pkt.enc_payload, payload_in, len, nonce, _session_key);
 
-    // 3. SIGN THE OUTER PACKET (PUF)
-    // Sign everything from Header to Nonce (Offset 0 to 107)
+    // 3. Sign (header + body up to sat_id). With the nonce field removed the
+    //    signed region is exactly offsetof(PacketB_t, signature).
+    //    CCSDS: 104 bytes.   SNLP: 112 bytes.
+    //    This replaces the old hard-coded 108-byte scope which was wrong in
+    //    both tiers (see SEC-02 / VOID-111).
     unsigned long long sig_len;
-    // crypto_sign_detached(pkt.signature, &sig_len, (uint8_t*)&pkt, 108, _identity_priv);
-    crypto_sign_detached(pkt.signature, &sig_len, reinterpret_cast<uint8_t*>(&pkt), 108, _identity_priv);
-    // Defensive: Ensure signature length is as expected (Ed25519 = 64 bytes)
+    const size_t sign_len = offsetof(PacketB_t, signature);
+    crypto_sign_detached(pkt.signature, &sig_len,
+                         reinterpret_cast<uint8_t*>(&pkt),
+                         sign_len, _identity_priv);
     if (sig_len != 64) {
         while (1) {}
     }
+
+    // 4. Advance the monotonic guardrail and zero the stack nonce.
+    _last_tx_epoch_ms = pkt.epoch_ts;
+    sodium_memzero(nonce, sizeof(nonce));
+    // TODO(VOID-110): Persist _last_tx_epoch_ms to NVS every N calls.
+    return true;
 }
 
 // --- UTILITIES ---

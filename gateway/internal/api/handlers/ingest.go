@@ -41,20 +41,28 @@ func handlePayloadBody(body interface{}, rawData *[]byte, c *gin.Context, packet
 		return true
 
 	case *void_protocol.VoidProtocol_PacketBBody:
-		log.Printf("   💰 PAYMENT (B)   | Buyer SatID: %d | Nonce: %d | Sig Length: %d bytes",
-			b.SatId, b.Nonce, len(b.Signature))
+		log.Printf("   💰 PAYMENT (B)   | Buyer SatID: %d | EpochTs: %d | Sig Length: %d bytes",
+			b.SatId, b.EpochTs, len(b.Signature))
 
-		if packetSize < 170 {
+		// VOID-110 + VOID-114B: Packet B body is 178 bytes (174 + 4-byte tail pad).
+		//   • VOID-110 removed the wire nonce (derived from sat_id||epoch_ts).
+		//   • VOID-114B added _pad_head[2] + _pre_sat[2] + _pre_sig[4] so every
+		//     critical field is naturally aligned, and _tail_pad[4] so frame
+		//     totals land at 184 (CCSDS ÷8) and 192 (SNLP ÷64 cache line).
+		// Signature still covers (header + body[0..105]) = 106 body bytes.
+		const packetBBodyLen = 178
+		const packetBSigScopeBody = 106 // body bytes covered by signature
+		if packetSize < packetBBodyLen {
 			log.Printf("⛔ REJECTED: Packet B too short for signature verification")
 			c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"error": "Packet too short for signature verification"})
 			return true // Return true because we successfully identified the type, even if it failed validation
 		}
 
-		// --- SECURITY CHECK (Packet B) ---
-		// In Packet B (170 bytes), the signature starts at byte 102.
-		// The "Message" we signed is the first 102 bytes of the payload.
-		payloadStart := packetSize - 170
-		messageBytes := (*rawData)[payloadStart : payloadStart+102]
+		// Signed region is (rawData header) + first 98 body bytes.
+		bodyStart := packetSize - packetBBodyLen
+		headerBytes := (*rawData)[0:bodyStart]
+		bodyPreSig := (*rawData)[bodyStart : bodyStart+packetBSigScopeBody]
+		messageBytes := append(append([]byte{}, headerBytes...), bodyPreSig...)
 
 		// FIX: Check err != nil instead of !bool
 		if err := security.VerifyPacketSignature(b.SatId, messageBytes, b.Signature); err != nil {
