@@ -1,24 +1,29 @@
 /*-------------------------------------------------------------------------
  * 🛰️ VOID PROTOCOL v2.1 | Tiny Innovation Group Ltd
  * -------------------------------------------------------------------------
+ * Authority: Tiny Innovation Group Ltd
+ * License:   Apache 2.0
+ * Status:    Authenticated Clean Room Spec
  * File:      test_packing.cpp
- * Desc:      Verification of struct packing and memory alignment.
+ * Desc:      Legacy pragma-pack smoke test (tier-agnostic).
  * Compliant: NSA Clean C++ / SEI CERT
  * -------------------------------------------------------------------------*/
 
 #include <gtest/gtest.h>
 #include "void_packets.h"
 
-TEST(PackingTest, VerifyOTASizes) {
-    // Verified against README.md specifications
-    EXPECT_EQ(sizeof(VoidHeader_t), 6)   << "VoidHeader_t must be exactly 6 bytes.";
-    EXPECT_EQ(sizeof(PacketH_t), 112)    << "PacketH_t (Handshake) must be 112 bytes.";
-    EXPECT_EQ(sizeof(PacketA_t), 68)     << "PacketA_t (Invoice) must be 68 bytes.";
-    EXPECT_EQ(sizeof(PacketB_t), 176)    << "PacketB_t (Payment) must be 176 bytes.";
+// Smoke check: the #pragma pack(push, 1) wrapping the packet structs must
+// still be in effect. Deeper size/offset assertions now live in
+// test_packet_sizes.cpp and test_offsets.cpp (VOID-125).
+TEST(PackingTest, StructsArePragmaPackedByteAligned) {
+    EXPECT_EQ(alignof(PacketB_t), 1u) << "PacketB_t is not byte-aligned!";
+    EXPECT_EQ(alignof(PacketA_t), 1u) << "PacketA_t is not byte-aligned!";
+    EXPECT_EQ(alignof(PacketH_t), 1u) << "PacketH_t is not byte-aligned!";
 }
 
-TEST(PackingTest, VerifyAlignment) {
-    // Verify that the structs don't have hidden padding bytes
-    // (This ensures our #pragma pack(push, 1) is working)
-    EXPECT_TRUE(alignof(PacketB_t) == 1) << "PacketB_t is not byte-aligned!";
+TEST(PackingTest, CoreSizesMatchTierConstants) {
+    EXPECT_EQ(sizeof(PacketA_t),        static_cast<size_t>(SIZE_PACKET_A));
+    EXPECT_EQ(sizeof(PacketB_t),        static_cast<size_t>(SIZE_PACKET_B));
+    EXPECT_EQ(sizeof(PacketH_t),        static_cast<size_t>(SIZE_PACKET_H));
+    EXPECT_EQ(sizeof(HeartbeatPacket_t), static_cast<size_t>(SIZE_HEARTBEAT_PCK));
 }

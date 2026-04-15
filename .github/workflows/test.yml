@@ -1,0 +1,109 @@
+# ---------------------------------------------------------------------------
+# VOID-126 — Cross-implementation regression gate.
+#
+# Two required jobs run on every PR and on every push to main:
+#
+#   * go-test        — VOID-124: gateway Go regression suite (parser,
+#                      handlers, golden-vector harness).
+#   * cmake-ctest    — VOID-125: void-core C++ regression suite (packet
+#                      sizes, field offsets, golden vectors, cross-impl
+#                      sign/verify) across CCSDS and SNLP tiers.
+#
+# And one advisory-but-recommended job:
+#
+#   * vectors-drift  — regenerates the VOID-123 golden .bin vectors with
+#                      --deterministic and fails if the checked-in tree
+#                      differs by a single byte. Makes the committed bins
+#                      authoritative.
+#
+# After this workflow lands on main, add `go-test`, `cmake-ctest`, and
+# `vectors-drift` to the required status checks on branch protection so
+# main cannot merge without all three green.
+# ---------------------------------------------------------------------------
+name: VOID Regression Gate
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+jobs:
+  go-test:
+    name: Go gateway suite (VOID-124)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: gateway/go.mod
+          cache: true
+          cache-dependency-path: gateway/go.sum
+
+      - name: Build and test
+        working-directory: gateway
+        run: |
+          go build ./...
+          go test ./...
+
+  cmake-ctest:
+    name: C++ firmware suite (VOID-125)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install build toolchain
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential cmake
+
+      # FetchContent downloads googletest + libsodium — pin the cache to
+      # CMakeLists.txt so a pin bump invalidates cleanly.
+      - name: Cache FetchContent downloads
+        uses: actions/cache@v4
+        with:
+          path: void-core/build/_deps
+          key: cmake-fetchcontent-${{ runner.os }}-${{ hashFiles('void-core/CMakeLists.txt') }}
+          restore-keys: |
+            cmake-fetchcontent-${{ runner.os }}-
+
+      - name: Configure
+        run: cmake -S void-core -B void-core/build -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build
+        run: cmake --build void-core/build -j
+
+      - name: Run tests
+        run: ctest --test-dir void-core/build --output-on-failure
+
+  vectors-drift:
+    name: Golden vectors drift check (VOID-123)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: gateway/go.mod
+          cache: true
+          cache-dependency-path: gateway/go.sum
+
+      - name: Regenerate deterministic vectors
+        run: |
+          mkdir -p /tmp/vectors
+          go run gateway/test/utils/generate_packets.go --deterministic --out /tmp/vectors
+
+      - name: Diff against checked-in vectors
+        # Only the binary vectors under ccsds/ and snlp/ are generator
+        # output. test/vectors/README.md is hand-maintained and must be
+        # excluded from the drift comparison.
+        run: |
+          set -e
+          diff -r /tmp/vectors/ccsds test/vectors/ccsds
+          diff -r /tmp/vectors/snlp  test/vectors/snlp
