@@ -57,6 +57,8 @@ typedef struct __attribute__((packed)) {
 } PacketH_t;
 
 static_assert(sizeof(PacketH_t) == SIZE_PACKET_H, "PacketH_t size mismatch");
+static_assert(sizeof(PacketH_t) % 4 == 0, "PacketH_t not 32-bit word aligned (SNLP)");
+static_assert(sizeof(PacketH_t) % 8 == 0, "PacketH_t not 64-bit word aligned (SNLP)");
 
 /* --------------------------------------------------------------------------
  * PHASE 2: INVOICE (Packet A)
@@ -81,6 +83,8 @@ typedef struct __attribute__((packed)) {
 } PacketA_t;
 
 static_assert(sizeof(PacketA_t) == SIZE_PACKET_A, "PacketA_t size mismatch");
+static_assert(sizeof(PacketA_t) % 4 == 0, "PacketA_t not 32-bit word aligned (SNLP)");
+static_assert(sizeof(PacketA_t) % 8 == 0, "PacketA_t not 64-bit word aligned (SNLP)");
 
 /* --------------------------------------------------------------------------
  * PHASE 3: PAYMENT (Packet B)
@@ -113,6 +117,8 @@ typedef struct __attribute__((packed)) {
 } PacketB_t;
 
 static_assert(sizeof(PacketB_t) == SIZE_PACKET_B, "PacketB_t size mismatch");
+static_assert(sizeof(PacketB_t) % 4 == 0, "PacketB_t not 32-bit word aligned (SNLP)");
+static_assert(sizeof(PacketB_t) % 8 == 0, "PacketB_t not 64-bit word aligned (SNLP)");
 
 /* --------------------------------------------------------------------------
  * PHASE 4: ACKNOWLEDGEMENT (Downlink)
@@ -147,6 +153,8 @@ typedef struct __attribute__((packed)) {
 } TunnelData_t;
 
 static_assert(sizeof(TunnelData_t) == SIZE_TUNNEL_DATA, "TunnelData_t size mismatch");
+static_assert(sizeof(TunnelData_t) % 4 == 0, "TunnelData_t not 32-bit word aligned (SNLP)");
+static_assert(sizeof(TunnelData_t) % 8 == 0, "TunnelData_t not 64-bit word aligned (SNLP)");
 
 /**
  * @brief ACK Packet: Ground -> Sat B
@@ -166,6 +174,8 @@ typedef struct __attribute__((packed)) {
 } PacketAck_t;
 
 static_assert(sizeof(PacketAck_t) == SIZE_PACKET_ACK, "PacketAck_t size mismatch");
+static_assert(sizeof(PacketAck_t) % 4 == 0, "PacketAck_t not 32-bit word aligned (SNLP)");
+static_assert(sizeof(PacketAck_t) % 8 == 0, "PacketAck_t not 64-bit word aligned (SNLP)");
 
 /* --------------------------------------------------------------------------
  * PHASE 5: RECEIPT & DELIVERY (Packet C & D)
@@ -188,6 +198,8 @@ typedef struct __attribute__((packed)) {
 } PacketC_t;
 
 static_assert(sizeof(PacketC_t) == SIZE_PACKET_C, "PacketC_t size mismatch");
+static_assert(sizeof(PacketC_t) % 4 == 0, "PacketC_t not 32-bit word aligned (SNLP)");
+static_assert(sizeof(PacketC_t) % 8 == 0, "PacketC_t not 64-bit word aligned (SNLP)");
 
 /**
  * @brief Packet D: Delivery
@@ -204,6 +216,8 @@ typedef struct __attribute__((packed)) {
 } PacketD_t;
 
 static_assert(sizeof(PacketD_t) == SIZE_PACKET_D, "PacketD_t size mismatch");
+static_assert(sizeof(PacketD_t) % 4 == 0, "PacketD_t not 32-bit word aligned (SNLP)");
+static_assert(sizeof(PacketD_t) % 8 == 0, "PacketD_t not 64-bit word aligned (SNLP)");
 
 
 /*
@@ -233,6 +247,8 @@ typedef struct __attribute__((packed)) {
 } HeartbeatPacket_t;
 
 static_assert(sizeof(HeartbeatPacket_t) == SIZE_HEARTBEAT_PCK, "HeartbeatPacket_t size mismatch");
+static_assert(sizeof(HeartbeatPacket_t) % 4 == 0, "HeartbeatPacket_t not 32-bit word aligned (SNLP)");
+static_assert(sizeof(HeartbeatPacket_t) % 8 == 0, "HeartbeatPacket_t not 64-bit word aligned (SNLP)");
 
 // Restore default alignment
 #pragma pack(pop)
