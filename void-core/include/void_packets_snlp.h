@@ -158,24 +158,37 @@ static_assert(sizeof(TunnelData_t) % 8 == 0, "TunnelData_t not 64-bit word align
 
 /**
  * @brief ACK Packet: Ground -> Sat B
- * @size  128 Bytes
+ * @size  136 Bytes (SNLP tier — 14B header + 122B body)
  * @cite  Acknowledgement-spec.md
+ *
+ * F-03 FIX (VOID-006): body offset 0 carries the `magic` discriminant
+ * (0xAC = Packet ACK). Absorbed from the former 2-byte _pad_a; all
+ * downstream field offsets and total size are unchanged. Protects
+ * dispatch_122 against single-bit-flip collisions with Packet D (which
+ * shares body_length=122 in this tier).
  */
+static constexpr uint8_t PACKET_ACK_MAGIC = 0xAC;
+
 typedef struct __attribute__((packed)) {
-    VoidHeader_t header;        // 00-05: Big-Endian
-    uint16_t     _pad_a;        // 06-07: Alignment
-    uint32_t     target_tx_id;  // 08-11: Little-Endian (Nonce Match)
-    uint8_t      status;        // 12: 0x01=Settled
-    uint8_t      _pad_b;        // 13: Data boundary
-    RelayOps_t   relay_ops;     // 14-25: Relay Instructions
-    uint8_t      enc_tunnel[96]; // 26-121: Encrypted Tunnel Data
-    uint16_t     _pad_c;        // 114-115: Alignment
-    uint32_t     crc32;         // 116-119: Outer Checksum
+    VoidHeader_t header;        // 00-13: Big-Endian (14B SNLP)
+    uint8_t      magic;         // 14: Packet-ACK discriminant (0xAC)
+    uint8_t      _pad_a;        // 15: Alignment
+    uint32_t     target_tx_id;  // 16-19: Little-Endian (Nonce Match)
+    uint8_t      status;        // 20: 0x01=Settled
+    uint8_t      _pad_b;        // 21: Data boundary
+    RelayOps_t   relay_ops;     // 22-33: Relay Instructions
+    uint8_t      enc_tunnel[96]; // 34-129: Encrypted Tunnel Data
+    uint16_t     _pad_c;        // 130-131: Alignment
+    uint32_t     crc32;         // 132-135: Outer Checksum
 } PacketAck_t;
 
 static_assert(sizeof(PacketAck_t) == SIZE_PACKET_ACK, "PacketAck_t size mismatch");
 static_assert(sizeof(PacketAck_t) % 4 == 0, "PacketAck_t not 32-bit word aligned (SNLP)");
 static_assert(sizeof(PacketAck_t) % 8 == 0, "PacketAck_t not 64-bit word aligned (SNLP)");
+static_assert(offsetof(PacketAck_t, magic) == sizeof(VoidHeader_t),
+              "PacketAck_t::magic must sit at body offset 0 (F-03)");
+static_assert(offsetof(PacketAck_t, target_tx_id) == sizeof(VoidHeader_t) + 2,
+              "PacketAck_t::target_tx_id drifted — magic absorption broke alignment");
 
 /* --------------------------------------------------------------------------
  * PHASE 5: RECEIPT & DELIVERY (Packet C & D)
@@ -203,21 +216,32 @@ static_assert(sizeof(PacketC_t) % 8 == 0, "PacketC_t not 64-bit word aligned (SN
 
 /**
  * @brief Packet D: Delivery
- * @size  136 Bytes
+ * @size  136 Bytes (SNLP tier — 14B header + 122B body)
+ *
+ * F-03 FIX (VOID-006): body offset 0 carries the `magic` discriminant
+ * (0xD0 = Packet D). Absorbed from the former 2-byte _pad_head; all
+ * downstream field offsets and total size are unchanged.
  */
+static constexpr uint8_t PACKET_D_MAGIC = 0xD0;
+
 typedef struct __attribute__((packed)) {
-    VoidHeader_t header;        // 00-05: Big-Endian
-    uint16_t     _pad_head;     // 06-07: Alignment
-    uint64_t     downlink_ts;   // 08-15: Little-Endian
-    uint32_t     sat_b_id;      // 16-19: Little-Endian
-    uint8_t      payload[98];   // 20-117: Stripped Packet C
-    uint32_t     global_crc;    // 118-121: Little-Endian
-    uint8_t      _tail[6];      // 122-127: Final Alignment
+    VoidHeader_t header;        // 00-13: Big-Endian (14B SNLP)
+    uint8_t      magic;         // 14: Packet-D discriminant (0xD0)
+    uint8_t      _pad_head;     // 15: Alignment
+    uint64_t     downlink_ts;   // 16-23: Little-Endian
+    uint32_t     sat_b_id;      // 24-27: Little-Endian
+    uint8_t      payload[98];   // 28-125: Stripped Packet C
+    uint32_t     global_crc;    // 126-129: Little-Endian
+    uint8_t      _tail[6];      // 130-135: Final Alignment
 } PacketD_t;
 
 static_assert(sizeof(PacketD_t) == SIZE_PACKET_D, "PacketD_t size mismatch");
 static_assert(sizeof(PacketD_t) % 4 == 0, "PacketD_t not 32-bit word aligned (SNLP)");
 static_assert(sizeof(PacketD_t) % 8 == 0, "PacketD_t not 64-bit word aligned (SNLP)");
+static_assert(offsetof(PacketD_t, magic) == sizeof(VoidHeader_t),
+              "PacketD_t::magic must sit at body offset 0 (F-03)");
+static_assert(offsetof(PacketD_t, downlink_ts) == sizeof(VoidHeader_t) + 2,
+              "PacketD_t::downlink_ts drifted — magic absorption broke alignment");
 
 
 /*

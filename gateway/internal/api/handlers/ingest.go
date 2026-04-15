@@ -23,9 +23,34 @@ func prettyPrintStruct(name string, v interface{}) {
 	}
 }
 
+// VOID-006 / F-03: body-offset-0 magic byte discriminants for the
+// 122-byte collision zone. Enforced application-side here as
+// defence-in-depth; the regenerated Kaitai parser (VOID-117) will
+// additionally route dispatch_122 on this byte. A single RF bit-flip
+// cannot cross between 0xD0 and 0xAC (Hamming distance 4).
+const (
+	magicPacketD   byte = 0xD0
+	magicPacketAck byte = 0xAC
+)
+
+// bodyOffsetZero returns the byte at body offset 0 for a parsed frame,
+// or false if the raw buffer is too short to contain a body byte after
+// the routing header. Header length is derived from the parsed tier
+// (6B CCSDS, 14B SNLP) — both tiers are locked by VOID-113/114B.
+func bodyOffsetZero(raw []byte, isSnlp bool) (byte, bool) {
+	headerLen := 6
+	if isSnlp {
+		headerLen = 14
+	}
+	if len(raw) <= headerLen {
+		return 0, false
+	}
+	return raw[headerLen], true
+}
+
 // handlePayloadBody processes the packet body and returns true if handled, false if unknown type.
 // We pass rawData as a pointer to the slice to avoid unnecessary copying, though slices are already descriptors.
-func handlePayloadBody(body interface{}, rawData *[]byte, c *gin.Context, packetSize int) bool {
+func handlePayloadBody(body interface{}, rawData *[]byte, c *gin.Context, packetSize int, isSnlp bool) bool {
 	switch b := body.(type) {
 	case *void_protocol.VoidProtocol_HeartbeatBody:
 		lat := float64(b.LatFixed) / 10000000.0
@@ -104,12 +129,35 @@ func handlePayloadBody(body interface{}, rawData *[]byte, c *gin.Context, packet
 		return true
 
 	case *void_protocol.VoidProtocol_Dispatch122:
+		// F-03: body offset 0 MUST carry the packet-type magic byte.
+		// The magic is our defence against the dispatch_122 single-bit-
+		// flip collision between Packet D and Packet ACK. The currently
+		// deployed Kaitai parser still routes on the CCSDS Type bit;
+		// this application-layer check rejects any mismatch between
+		// the Type-bit routing and the magic byte, and also rejects
+		// unknown magic values outright.
+		magic, ok := bodyOffsetZero(*rawData, isSnlp)
+		if !ok {
+			log.Printf("⛔ REJECTED: dispatch_122 frame too short to read body magic")
+			c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"error": "Dispatch_122 frame too short for magic byte"})
+			return true
+		}
 		switch inner := b.Content.(type) {
 		case *void_protocol.VoidProtocol_PacketDBody:
+			if magic != magicPacketD {
+				log.Printf("⛔ REJECTED: Packet D magic mismatch: got 0x%02X, want 0x%02X", magic, magicPacketD)
+				c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"error": "Packet D magic byte mismatch (F-03)"})
+				return true
+			}
 			log.Printf("   📦 DELIVERY (D)  | Mule SatID: %d | Downlink TS: %d",
 				inner.SatBId, inner.DownlinkTs)
 			return true
 		case *void_protocol.VoidProtocol_PacketAckBody:
+			if magic != magicPacketAck {
+				log.Printf("⛔ REJECTED: Packet ACK (SNLP) magic mismatch: got 0x%02X, want 0x%02X", magic, magicPacketAck)
+				c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"error": "Packet ACK magic byte mismatch (F-03)"})
+				return true
+			}
 			log.Printf("   ✅ COMMAND ACK   | Target TxID: %d | Status: %d | Freq: %d Hz",
 				inner.TargetTxId, inner.Status, inner.RelayOps.Frequency)
 			return true
@@ -117,6 +165,20 @@ func handlePayloadBody(body interface{}, rawData *[]byte, c *gin.Context, packet
 		return false
 
 	case *void_protocol.VoidProtocol_PacketAckBody:
+		// F-03: CCSDS ACK (body 114B) is routed at the root, not via
+		// dispatch_122. Magic-byte check still applies — body offset 0
+		// must be 0xAC.
+		magic, ok := bodyOffsetZero(*rawData, isSnlp)
+		if !ok {
+			log.Printf("⛔ REJECTED: Packet ACK frame too short to read body magic")
+			c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"error": "Packet ACK frame too short for magic byte"})
+			return true
+		}
+		if magic != magicPacketAck {
+			log.Printf("⛔ REJECTED: Packet ACK magic mismatch: got 0x%02X, want 0x%02X", magic, magicPacketAck)
+			c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"error": "Packet ACK magic byte mismatch (F-03)"})
+			return true
+		}
 		log.Printf("   ✅ COMMAND ACK   | Target TxID: %d | Status: %d | Freq: %d Hz",
 			b.TargetTxId, b.Status, b.RelayOps.Frequency)
 		return true
@@ -161,7 +223,7 @@ func IngestPacket(c *gin.Context) {
 	// (nil Body, truncated frame, or unsupported payload_len). This is
 	// the final bounds gate — refusing before any downstream cast or
 	// settlement logic runs.
-	if !handlePayloadBody(packet.Body, &rawData, c, packetSize) {
+	if !handlePayloadBody(packet.Body, &rawData, c, packetSize, isSnlp) {
 		log.Printf("⛔ BOUNCE: Unknown or truncated payload body")
 		if !c.IsAborted() {
 			c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"error": "Unsupported or truncated Void Protocol frame"})

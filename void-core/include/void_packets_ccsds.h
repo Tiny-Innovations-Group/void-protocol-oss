@@ -162,10 +162,17 @@ static_assert(sizeof(TunnelData_t) % 8 == 0, "TunnelData_t not 64-bit word align
  * @brief ACK Packet: Ground -> Sat B
  * @size  120 Bytes
  * @cite  Acknowledgement-spec.md
+ *
+ * F-03 FIX (VOID-006): body offset 0 carries the `magic` discriminant
+ * (0xAC = Packet ACK). Absorbed from the former 2-byte _pad_a; all
+ * downstream field offsets and total size are unchanged.
  */
+static constexpr uint8_t PACKET_ACK_MAGIC = 0xAC;
+
 typedef struct __attribute__((packed)) {
     VoidHeader_t header;        // 00-05: Big-Endian
-    uint16_t     _pad_a;        // 06-07: Alignment
+    uint8_t      magic;         // 06: Packet-ACK discriminant (0xAC)
+    uint8_t      _pad_a;        // 07: Alignment
     uint32_t     target_tx_id;  // 08-11: Little-Endian (Nonce Match)
     uint8_t      status;        // 12: 0x01=Settled
     uint8_t      _pad_b;        // 13: Data boundary
@@ -178,6 +185,10 @@ typedef struct __attribute__((packed)) {
 static_assert(sizeof(PacketAck_t) == SIZE_PACKET_ACK, "PacketAck_t size mismatch");
 static_assert(sizeof(PacketAck_t) % 4 == 0, "PacketAck_t not 32-bit word aligned (CCSDS)");
 static_assert(sizeof(PacketAck_t) % 8 == 0, "PacketAck_t not 64-bit word aligned (CCSDS)");
+static_assert(offsetof(PacketAck_t, magic) == sizeof(VoidHeader_t),
+              "PacketAck_t::magic must sit at body offset 0 (F-03)");
+static_assert(offsetof(PacketAck_t, target_tx_id) == sizeof(VoidHeader_t) + 2,
+              "PacketAck_t::target_tx_id drifted — magic absorption broke alignment");
 
 /* --------------------------------------------------------------------------
  * PHASE 5: RECEIPT & DELIVERY (Packet C & D)
@@ -208,10 +219,18 @@ static_assert(sizeof(PacketC_t) % 8 == 0, "PacketC_t not 64-bit word aligned (CC
  * @brief Packet D: Delivery
  * @size  128 Bytes
  * @cite  Receipt-spec.md
+ *
+ * F-03 FIX (VOID-006): body offset 0 carries the `magic` discriminant
+ * (0xD0 = Packet D). Absorbed from the former 2-byte _pad_head; all
+ * downstream field offsets and total size are unchanged. Protects
+ * dispatch_122 against single-bit-flip collisions with Packet ACK SNLP.
  */
+static constexpr uint8_t PACKET_D_MAGIC = 0xD0;
+
 typedef struct __attribute__((packed)) {
     VoidHeader_t header;        // 00-05: Big-Endian
-    uint16_t     _pad_head;     // 06-07: Alignment
+    uint8_t      magic;         // 06: Packet-D discriminant (0xD0)
+    uint8_t      _pad_head;     // 07: Alignment
     uint64_t     downlink_ts;   // 08-15: Little-Endian
     uint32_t     sat_b_id;      // 16-19: Little-Endian
     uint8_t      payload[98];   // 20-117: Stripped Packet C
@@ -222,6 +241,10 @@ typedef struct __attribute__((packed)) {
 static_assert(sizeof(PacketD_t) == SIZE_PACKET_D, "PacketD_t size mismatch");
 static_assert(sizeof(PacketD_t) % 4 == 0, "PacketD_t not 32-bit word aligned (CCSDS)");
 static_assert(sizeof(PacketD_t) % 8 == 0, "PacketD_t not 64-bit word aligned (CCSDS)");
+static_assert(offsetof(PacketD_t, magic) == sizeof(VoidHeader_t),
+              "PacketD_t::magic must sit at body offset 0 (F-03)");
+static_assert(offsetof(PacketD_t, downlink_ts) == sizeof(VoidHeader_t) + 2,
+              "PacketD_t::downlink_ts drifted — magic absorption broke alignment");
 
 /*
  * @brief Packet L: Life/Heartbeat

@@ -49,6 +49,12 @@ const (
 	apidSatA   uint32 = 100
 	apidSatB   uint32 = 101
 	loraMaxLen        = 255
+
+	// F-03 FIX (VOID-006): body-offset-0 magic discriminants for the
+	// 122-byte collision zone. Hamming distance 4 between 0xD0 and
+	// 0xAC — a single RF bit-flip cannot cross from one to the other.
+	magicPacketD   uint8 = 0xD0
+	magicPacketAck uint8 = 0xAC
 )
 
 func init() {
@@ -210,9 +216,10 @@ func genPacketC(isSnlp bool) []byte {
 
 func genPacketD(isSnlp bool) []byte {
 	// Packet D: Delivery (122B body).
+	// F-03: body[0] = 0xD0 magic, body[1] = 0x00 pad (absorbed from former pad_head[2]).
 	var msg bytes.Buffer
-	msg.Write([]byte{0x00, 0x00}) // PadHead
-	writeLE(&msg, detEpochTsMs)   // DownlinkTs
+	msg.Write([]byte{magicPacketD, 0x00}) // Magic + PadHead
+	writeLE(&msg, detEpochTsMs)           // DownlinkTs
 	writeLE(&msg, detSatId)       // SatBId
 
 	payload := make([]byte, 98)
@@ -238,9 +245,10 @@ func genPacketAck(isSnlp bool) []byte {
 		payloadLen = 122
 	}
 
+	// F-03: body[0] = 0xAC magic, body[1] = 0x00 pad (absorbed from former pad_a[2]).
 	var msg bytes.Buffer
-	msg.Write([]byte{0x00, 0x00})     // PadA
-	writeLE(&msg, uint32(0xCAFEBABE)) // TargetTxId
+	msg.Write([]byte{magicPacketAck, 0x00}) // Magic + PadA
+	writeLE(&msg, uint32(0xCAFEBABE))       // TargetTxId
 	writeLE(&msg, uint8(1))           // Status
 	msg.Write([]byte{0x00})           // PadB
 
