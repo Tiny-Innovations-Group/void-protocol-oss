@@ -86,13 +86,12 @@ When you need authoritative information on the protocol, read these files direct
 - [docs/KSY_README.md](docs/KSY_README.md) — Kaitai Struct schema overview.
 
 ### Canonical Kaitai schema (source of truth for wire format)
-The hardened, modular KSY files under `docs/todo/` are the authoritative schema.
-**`void_protocol_final_v2.ksy` (repo root) is STALE — do not use for codegen or reference.** It predates VOID-006/110/111/112/113/114B and carries known critical faults (C-01 seq_count mask, F-02 `_io.size` dispatch). It will be deleted or archived when VOID-117 (parser regen) lands.
+The hardened, modular KSY files under `docs/kaitai_struct/` are the authoritative schema. These are the source of truth for the wire format — all C++ structs, Go generators, and golden vectors must match them byte-for-byte.
 
-- [docs/todo/void_protocol (1).ksy](<docs/todo/void_protocol (1).ksy>) — root dispatcher + all packet body types. Dispatch keys, collision resolver, magic-byte routing.
-- [docs/todo/ccsds_primary_header.ksy](docs/todo/ccsds_primary_header.ksy) — CCSDS 133.0-B-2 6-byte primary header. C-01 fix (`seq_count & 0x3FFF`), C-02 version doc.
-- [docs/todo/snlp_header.ksy](docs/todo/snlp_header.ksy) — SNLP 14-byte header (F-01 fix, VOID-113/114B). `align_pad` = 4 bytes.
-- [docs/todo/tig_common_types.ksy](docs/todo/tig_common_types.ksy) — shared enums (`asset_id`, `settlement_status`, `sys_state`, `cmd_code`) + reusable types (`vector_3d`, `relay_ops`, `ed25519_signature`, etc.).
+- [docs/kaitai_struct/void_protocol.ksy](docs/kaitai_struct/void_protocol.ksy) — root dispatcher + all packet body types. Dispatch keys, collision resolver, magic-byte routing.
+- [docs/kaitai_struct/ccsds_primary_header.ksy](docs/kaitai_struct/ccsds_primary_header.ksy) — CCSDS 133.0-B-2 6-byte primary header. C-01 fix (`seq_count & 0x3FFF`), C-02 version doc.
+- [docs/kaitai_struct/snlp_header.ksy](docs/kaitai_struct/snlp_header.ksy) — SNLP 14-byte header (F-01 fix, VOID-113/114B). `align_pad` = 4 bytes.
+- [docs/kaitai_struct/tig_common_types.ksy](docs/kaitai_struct/tig_common_types.ksy) — shared enums (`asset_id`, `settlement_status`, `sys_state`, `cmd_code`) + reusable types (`vector_3d`, `relay_ops`, `ed25519_signature`, etc.).
 
 ## Audit & decision records (the "why")
 - [docs/VOID_KSY_SECURITY_ALIGNMENT_AUDIT_2026-04-14.md](docs/VOID_KSY_SECURITY_ALIGNMENT_AUDIT_2026-04-14.md) — source for VOID-110/111/112/113/114B/115 tickets.
