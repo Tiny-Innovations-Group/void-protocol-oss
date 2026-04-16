@@ -4,8 +4,8 @@
  * Authority: Tiny Innovation Group Ltd
  * License:   Apache 2.0
  * Status:    Authenticated Clean Room Spec
- * File:      void_packets.h
- * Desc:      Packed structures for OTA serialization.
+ * File:      void_packets_snlp.h
+ * Desc:      Packed structures for OTA serialization (SNLP / Community tier).
  * -------------------------------------------------------------------------
  * WARNING: Payloads are Little-Endian. Headers are Big-Endian.
  * -------------------------------------------------------------------------*/
@@ -49,11 +49,11 @@ static_assert(sizeof(VoidHeader_t) == SIZE_SNLP_HEADER, "VoidHeader_t SNLP size 
  * @cite  Handshake-spec.md
  */
 typedef struct __attribute__((packed)) {
-    VoidHeader_t header;        // 00-05: Big-Endian
-    uint16_t     session_ttl;   // 06-07: Little-Endian (Alignment + Logic)
-    uint64_t     timestamp;     // 08-15: Little-Endian (Unix Epoch)
-    uint8_t      eph_pub_key[32]; // 16-47: X25519 Public Key
-    uint8_t      signature[64];   // 48-111: Ed25519 Identity Sig
+    VoidHeader_t header;        // 00-13: SNLP Header (14B, Big-Endian)
+    uint16_t     session_ttl;   // 14-15: Little-Endian (Alignment + Logic)
+    uint64_t     timestamp;     // 16-23: Little-Endian (Unix Epoch)
+    uint8_t      eph_pub_key[32]; // 24-55: X25519 Public Key
+    uint8_t      signature[64];   // 56-119: Ed25519 Identity Sig
 } PacketH_t;
 
 static_assert(sizeof(PacketH_t) == SIZE_PACKET_H, "PacketH_t size mismatch");
@@ -143,13 +143,13 @@ typedef struct __attribute__((packed)) {
  * @cite  Acknowledgment-spec.md [Section C]
  */
 typedef struct __attribute__((packed)) {
-    VoidHeader_t header;        // 00-05: Big-Endian (APID=Sat A)
-    uint8_t      _pad_a[2];     // 06-07: 64-bit Alignment Pad
-    uint64_t     block_nonce;   // 08-15: Little-Endian (L2 Block Height)
-    uint16_t     cmd_code;      // 16-17: Little-Endian (0x0001 = UNLOCK)
-    uint16_t     ttl;           // 18-19: Little-Endian
-    uint8_t      ground_sig[64]; // 20-83: Auth Signature
-    uint32_t     crc32;         // 84-87: Little-Endian (Inner Checksum)
+    VoidHeader_t header;        // 00-13: SNLP Header (14B, Big-Endian, APID=Sat A)
+    uint8_t      _pad_a[2];     // 14-15: 64-bit Alignment Pad
+    uint64_t     block_nonce;   // 16-23: Little-Endian (L2 Block Height)
+    uint16_t     cmd_code;      // 24-25: Little-Endian (0x0001 = UNLOCK)
+    uint16_t     ttl;           // 26-27: Little-Endian
+    uint8_t      ground_sig[64]; // 28-91: Auth Signature
+    uint32_t     crc32;         // 92-95: Little-Endian (Inner Checksum)
 } TunnelData_t;
 
 static_assert(sizeof(TunnelData_t) == SIZE_TUNNEL_DATA, "TunnelData_t size mismatch");
@@ -199,15 +199,15 @@ static_assert(offsetof(PacketAck_t, target_tx_id) == sizeof(VoidHeader_t) + 2,
  * @size  112 Bytes
  */
 typedef struct __attribute__((packed)) {
-    VoidHeader_t header;        // 00-05: Big-Endian
-    uint16_t     _pad_head;     // 06-07: Alignment
-    uint64_t     exec_time;     // 08-15: Little-Endian
-    uint64_t     enc_tx_id;     // 16-23: Encrypted
-    uint8_t      enc_status;    // 24: Encrypted
-    uint8_t      _pad_sig[7];   // 25-31: Alignment for Sig
-    uint8_t      signature[64];   // 32-95: Sat A PUF Signature
-    uint32_t     crc32;         // 96-99: Little-Endian
-    uint8_t      _tail_pad[4];  // 100-103: Final Alignment
+    VoidHeader_t header;        // 00-13: SNLP Header (14B, Big-Endian)
+    uint16_t     _pad_head;     // 14-15: Alignment
+    uint64_t     exec_time;     // 16-23: Little-Endian
+    uint64_t     enc_tx_id;     // 24-31: Encrypted
+    uint8_t      enc_status;    // 32: Encrypted
+    uint8_t      _pad_sig[7];   // 33-39: Alignment for Sig
+    uint8_t      signature[64];   // 40-103: Sat A PUF Signature
+    uint32_t     crc32;         // 104-107: Little-Endian
+    uint8_t      _tail_pad[4];  // 108-111: Final Alignment
 } PacketC_t;
 
 static_assert(sizeof(PacketC_t) == SIZE_PACKET_C, "PacketC_t size mismatch");
@@ -255,19 +255,19 @@ static_assert(offsetof(PacketD_t, downlink_ts) == sizeof(VoidHeader_t) + 2,
  * size is unchanged.
  */
 typedef struct __attribute__((packed)) {
-    VoidHeader_t header;        // Polymorphic (6B or 14B)
+    VoidHeader_t header;        // 00-13: SNLP Header (14B)
 
-    uint16_t     _pad_head;     // 00-01: Alignment (VOID-114B)
-    uint64_t     epoch_ts;      // 02-09: Unix ts (8-aligned ✅)
-    uint32_t     pressure_pa;   // 10-13: Pressure Pa (4-aligned ✅)
-    int32_t      lat_fixed;     // 14-17: Lat * 10^7 (4-aligned ✅)
-    int32_t      lon_fixed;     // 18-21: Lon * 10^7 (4-aligned ✅)
-    uint16_t     vbatt_mv;      // 22-23: Battery mV (2-aligned ✅)
-    int16_t      temp_c;        // 24-25: Temp centidegrees (2-aligned ✅)
-    uint16_t     gps_speed_cms; // 26-27: Speed cm/s (2-aligned ✅)
-    uint8_t      sys_state;     // 28:    State ID
-    uint8_t      sat_lock;      // 29:    GPS Lock Count
-    uint32_t     crc32;         // 30-33: Checksum (4-aligned ✅)
+    uint16_t     _pad_head;     // 14-15: Alignment (VOID-114B)
+    uint64_t     epoch_ts;      // 16-23: Unix ts (8-aligned ✅)
+    uint32_t     pressure_pa;   // 24-27: Pressure Pa (4-aligned ✅)
+    int32_t      lat_fixed;     // 28-31: Lat * 10^7 (4-aligned ✅)
+    int32_t      lon_fixed;     // 32-35: Lon * 10^7 (4-aligned ✅)
+    uint16_t     vbatt_mv;      // 36-37: Battery mV (2-aligned ✅)
+    int16_t      temp_c;        // 38-39: Temp centidegrees (2-aligned ✅)
+    uint16_t     gps_speed_cms; // 40-41: Speed cm/s (2-aligned ✅)
+    uint8_t      sys_state;     // 42:    State ID
+    uint8_t      sat_lock;      // 43:    GPS Lock Count
+    uint32_t     crc32;         // 44-47: Checksum (4-aligned ✅)
 } HeartbeatPacket_t;
 
 static_assert(sizeof(HeartbeatPacket_t) == SIZE_HEARTBEAT_PCK, "HeartbeatPacket_t size mismatch");
