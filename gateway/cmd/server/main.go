@@ -2,6 +2,7 @@ package main
 
 import (
 	"log"
+	"os"
 
 	"github.com/Tiny-Innovations-Group/void-protocol-oss/gateway/internal/api/handlers"
 	"github.com/Tiny-Innovations-Group/void-protocol-oss/gateway/internal/core/registry"
@@ -10,6 +11,13 @@ import (
 )
 
 func main() {
+	// VOID-127: Alpha plaintext mode — when set, the gateway treats
+	// enc_payload as cleartext (no ChaCha20 decrypt). Ed25519 signature
+	// verification is unaffected.
+	if os.Getenv("VOID_ALPHA_PLAINTEXT") == "1" {
+		log.Println("WARNING: VOID-127 ALPHA PLAINTEXT MODE — ChaCha20 decryption DISABLED. DO NOT run in production.")
+	}
+
 	// Initialize Gin in release mode for speed (or debug for local)
 	router := gin.Default()
 	registry.Initialize()

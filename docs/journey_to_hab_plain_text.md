@@ -64,9 +64,9 @@ Goal: `scripts/demo_alpha.sh` → two Heltecs + ground bouncer + Go gateway + lo
 
 | # | Ticket | Title | Status | Priority | Notes |
 |---|---|---|---|---|---|
-| 1 | [VOID-127](https://www.notion.so/344d64b77e4081d99ba3dac7d406d283) | Alpha Plaintext Build Flag (skip ChaCha20) | Not started | P0 | Foundation. Must land first. |
-| 2 | [VOID-120](https://www.notion.so/342d64b77e40818faf9ff12dc913f07e) | Fix SNLP Header File Offset Comments | Not started | P1 | KSY hygiene. Corrects `void_packets_snlp.h` header-offset comments (currently show CCSDS 6B offsets). Trivial fix, huge safety value for every signature-scope ticket below. |
-| 3 | [VOID-132](https://www.notion.so/344d64b77e40811b89ccf588d6a27a41) | Synthetic GPS Stub for Alpha Demo | Not started | P1 | Parallel-ok with #1, #2. Unblocks #5 without waiting on real u-blox (#22). |
+| ~~1~~ | ~~[VOID-127](https://www.notion.so/344d64b77e4081d99ba3dac7d406d283)~~ | ~~Alpha Plaintext Build Flag (skip ChaCha20)~~ | ~~Done~~ | ~~P0~~ | ~~Foundation. Must land first.~~ |
+| ~~2~~ | ~~[VOID-120](https://www.notion.so/342d64b77e40818faf9ff12dc913f07e)~~ | ~~Fix SNLP Header File Offset Comments~~ | ~~Done~~ | ~~P1~~ | ~~**KSY hygiene — included.** Comments in `void_packets_snlp.h` still reference CCSDS (6B) header offsets. Anyone writing signature code next reads these and gets it wrong. Trivial fix, huge safety value for #5/#9/#10.~~ |
+| ~~3~~ | ~~[VOID-132](https://www.notion.so/344d64b77e40811b89ccf588d6a27a41)~~ | ~~Synthetic GPS Stub for Alpha Demo~~ | ~~Done~~ | ~~P1~~ | ~~Parallel-ok with #1, #2. Unblocks #5 without waiting on real u-blox (#16).~~ |
 | 4 | [VOID-050](https://www.notion.so/33fd64b77e4081658b86ebbb21ca7294) | Contract Scaffold | Not started | P0 | Parallel-ok with all firmware work. Local Hardhat/Foundry project. No blockchain dependency. |
 | 5 | [VOID-128](https://www.notion.so/344d64b77e408184a9dbd4bba2e192d9) | Buyer Packet B TX Pipeline (firmware, plaintext) | Not started | P0 | Requires #1, #2, #3. Closes #8 on completion. Biggest single bottleneck in Phase A (~4–5 dev-days). |
 | 6 | [VOID-051](https://www.notion.so/33fd64b77e408136be97fec120fcac01) | Minimal Escrow Function | Not started | P0 | Requires #4. **Flat-sat scope: single-transaction `settle_batch` on local Anvil only.** Testnet promotion moves to Phase B (#21). |
