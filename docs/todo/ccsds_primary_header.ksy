@@ -38,9 +38,16 @@ seq:
 instances:
   version:
     value: (version_type_flag_apid >> 13) & 0b111
-    valid:
-      eq: 0
-    doc: "3-bit Version Number. MUST be 0 (CCSDS Version 1)."
+    # NOTE (C-02): Kaitai `valid:` is not supported on computed instances —
+    # it only works on seq fields parsed directly from the stream. Attempting
+    # `valid: { eq: 0 }` here causes a kaitai-struct-compiler error. The
+    # CCSDS Version 1 constraint is therefore enforced at the application
+    # layer (gateway ingest handler rejects any frame with version != 0).
+    doc: |
+      3-bit Version Number. MUST be 0 (CCSDS Version 1 per CCSDS 133.0-B-2
+      §4.1.3.1). Non-zero indicates an unknown future revision and MUST be
+      rejected by the ingest handler. Enforced application-side — kaitai
+      `valid:` is unsupported on instance fields.
 
   packet_type:
     value: (version_type_flag_apid >> 12) & 0b1
