@@ -45,7 +45,7 @@ Goal: `scripts/demo_alpha.sh` → two Heltec boards + ground bouncer + Go gatewa
 
 | # | Ticket | Title | Status | Priority | Notes |
 |---|---|---|---|---|---|
-| 1 | [VOID-127](https://www.notion.so/344d64b77e4081d99ba3dac7d406d283) | Alpha Plaintext Build Flag (skip ChaCha20) | Not started | P0 | Foundation. Must land first. |
+| ~~1~~ | ~~[VOID-127](https://www.notion.so/344d64b77e4081d99ba3dac7d406d283)~~ | ~~Alpha Plaintext Build Flag (skip ChaCha20)~~ | ~~Done~~ | ~~P0~~ | ~~Foundation. Must land first.~~ |
 | 2 | [VOID-120](https://www.notion.so/342d64b77e40818faf9ff12dc913f07e) | Fix SNLP Header File Offset Comments | Not started | P1 | **KSY hygiene — included.** Comments in `void_packets_snlp.h` still reference CCSDS (6B) header offsets. Anyone writing signature code next reads these and gets it wrong. Trivial fix, huge safety value for #5/#9/#10. |
 | 3 | [VOID-132](https://www.notion.so/344d64b77e40811b89ccf588d6a27a41) | Synthetic GPS Stub for Alpha Demo | Not started | P1 | Parallel-ok with #1, #2. Unblocks #5 without waiting on real u-blox (#16). |
 | 4 | [VOID-050](https://www.notion.so/33fd64b77e4081658b86ebbb21ca7294) | Contract Scaffold | Not started | P0 | Parallel-ok with all firmware work. Local Hardhat/Foundry project. No blockchain dependency. |

@@ -5,7 +5,9 @@
  * License:   Apache 2.0
  * Status:    Authenticated Clean Room Spec
  * File:      security_manager.cpp
- * Desc:      Security Manager for VOID Protocol Satellite Firmware (Ed25519/X25519/ChaCha20).  
+ * Desc:      Security Manager for VOID Protocol Satellite Firmware (Ed25519/X25519/ChaCha20).
+ *            VOID-127: When VOID_ALPHA_PLAINTEXT is defined, ChaCha20 encryption is
+ *            bypassed — enc_payload carries cleartext. Ed25519 signing is unaffected.
  * Compliant: NSA Clean C++ (RAII, No-Heap, Forward Secrecy).  
  * -------------------------------------------------------------------------*/
 
@@ -13,6 +15,10 @@
 #include <sodium.h>
 #include <cstddef>
 #include <cstring>
+
+#ifdef VOID_ALPHA_PLAINTEXT
+#warning "VOID-127: ALPHA PLAINTEXT BUILD — ChaCha20 encryption DISABLED. DO NOT ship to production."
+#endif
 
 SecurityManager Security;
 
@@ -138,9 +144,27 @@ bool SecurityManager::processHandshakeResponse(const PacketH_t& pkt_in) {
 //
 // See Protocol-spec-CCSDS.md §3 "Nonce Derivation" for the full proof.
 bool SecurityManager::encryptPacketB(PacketB_t& pkt, const uint8_t* payload_in, size_t len) {
+    if (len > sizeof(pkt.enc_payload)) return false;
+
+#ifdef VOID_ALPHA_PLAINTEXT
+    // VOID-127: Alpha plaintext path
+    // ChaCha20 encryption is bypassed — payload is copied verbatim into
+    // enc_payload. The session, GPS-gate, and monotonic-epoch guards are
+    // skipped because they exist solely to protect ChaCha20 nonce
+    // uniqueness, which is irrelevant when no cipher runs.
+    //
+    // The nonce (sat_id[4] || epoch_ts[8]) remains derivable from fields
+    // already on the wire but is NOT consumed by any cipher here.
+    //
+    // Ed25519 signature scope is UNCHANGED (VOID-111).
+    memcpy(pkt.enc_payload, payload_in, len);
+    if (len < sizeof(pkt.enc_payload)) {
+        memset(pkt.enc_payload + len, 0, sizeof(pkt.enc_payload) - len);
+    }
+#else
+    // Standard encrypted path
     if (_state != SESSION_ACTIVE) return false;
     if (!_gps_time_valid) return false;                    // GPS gate
-    if (len > sizeof(pkt.enc_payload)) return false;
     if (pkt.epoch_ts <= _last_tx_epoch_ms) return false;   // monotonic guardrail
 
     // 1. Derive the 12-byte nonce from fields already in the packet.
@@ -150,14 +174,14 @@ bool SecurityManager::encryptPacketB(PacketB_t& pkt, const uint8_t* payload_in, 
 
     // 2. ChaCha20 stream encrypt. The outer Ed25519 signature provides
     //    authenticity; we intentionally do not use Poly1305 here because the
-    //    signature covers (header + body − signature_suffix).
+    //    signature covers (header + body - signature_suffix).
     crypto_stream_chacha20_xor(pkt.enc_payload, payload_in, len, nonce, _session_key);
+#endif
 
-    // 3. Sign (header + body up to sat_id). With the nonce field removed the
-    //    signed region is exactly offsetof(PacketB_t, signature).
+    // Sign (header + body up to signature offset). With the nonce field
+    // removed the signed region is exactly offsetof(PacketB_t, signature).
     //    CCSDS: 104 bytes.   SNLP: 112 bytes.
-    //    This replaces the old hard-coded 108-byte scope which was wrong in
-    //    both tiers (see SEC-02 / VOID-111).
+    // Identical in both plaintext and encrypted modes (VOID-111).
     unsigned long long sig_len;
     const size_t sign_len = offsetof(PacketB_t, signature);
     crypto_sign_detached(pkt.signature, &sig_len,
@@ -167,10 +191,12 @@ bool SecurityManager::encryptPacketB(PacketB_t& pkt, const uint8_t* payload_in, 
         while (1) {}
     }
 
-    // 4. Advance the monotonic guardrail and zero the stack nonce.
+#ifndef VOID_ALPHA_PLAINTEXT
+    // Advance the monotonic guardrail and zero the stack nonce.
     _last_tx_epoch_ms = pkt.epoch_ts;
     sodium_memzero(nonce, sizeof(nonce));
     // TODO(VOID-110): Persist _last_tx_epoch_ms to NVS every N calls.
+#endif
     return true;
 }
 

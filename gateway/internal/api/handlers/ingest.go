@@ -69,6 +69,10 @@ func handlePayloadBody(body interface{}, rawData *[]byte, c *gin.Context, packet
 		log.Printf("   💰 PAYMENT (B)   | Buyer SatID: %d | EpochTs: %d | Sig Length: %d bytes",
 			b.SatId, b.EpochTs, len(b.Signature))
 
+		// VOID-127: When VOID_ALPHA_PLAINTEXT=1, enc_payload carries cleartext
+		// (no ChaCha20 decryption needed). Ed25519 signature verification below
+		// is unaffected — it covers the same scope in both modes (VOID-111).
+
 		// VOID-110 + VOID-114B: Packet B body is 178 bytes (174 + 4-byte tail pad).
 		//   • VOID-110 removed the wire nonce (derived from sat_id||epoch_ts).
 		//   • VOID-114B added _pad_head[2] + _pre_sat[2] + _pre_sig[4] so every

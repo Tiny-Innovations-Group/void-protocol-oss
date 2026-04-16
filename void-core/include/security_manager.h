@@ -66,11 +66,17 @@ public:
     // Encrypts the Payment Payload (Packet B).
     // Caller MUST populate pkt.header, pkt.epoch_ts (ms), pkt.pos_vec, pkt.sat_id
     // BEFORE calling this. The nonce is derived internally from sat_id||epoch_ts.
+    //
+    // VOID-127: When VOID_ALPHA_PLAINTEXT is defined, the session, GPS-gate,
+    // and monotonic-epoch guards are bypassed and the payload is copied into
+    // enc_payload as cleartext (no ChaCha20). Ed25519 signing is unaffected.
+    //
     // Returns false if:
+    //   - len > sizeof(pkt.enc_payload)
+    // Additionally in encrypted mode (VOID_ALPHA_PLAINTEXT NOT defined):
     //   - session is not ACTIVE
     //   - _gps_time_valid is false (GPS gate not lifted)
     //   - pkt.epoch_ts <= _last_tx_epoch_ms (monotonic guardrail tripped)
-    //   - len > sizeof(pkt.enc_payload)
     bool encryptPacketB(PacketB_t& pkt, const uint8_t* payload_in, size_t len);
 
     // Decrypts the Tunnel Data (Packet Ack)
