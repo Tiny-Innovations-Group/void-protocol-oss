@@ -59,8 +59,10 @@ seq:
       switch-on: _root.body_length
       cases:
         # --- DETERMINISTIC DISPATCH (Unique Sizes) ---
-        62:  packet_a_body
-        170: packet_b_body
+        # VOID-114B: dispatch keys reflect alignment pads (_pad_head,
+        # _pre_crc, _pre_sat, _pre_sig, _tail_pad) added to bodies.
+        66:  packet_a_body
+        178: packet_b_body
         106: packet_h_body
         98:  packet_c_body
         34:  heartbeat_body
@@ -170,12 +172,19 @@ types:
   # PAYLOAD BODIES (Little-Endian)
   # ==========================================
 
-  # --- PACKET A: Invoice (62 Bytes) ---
+  # --- PACKET A: Invoice (66 Bytes, VOID-114B) ---
   packet_a_body:
     doc: |
       The Invoice. Broadcast by Sat A (Seller).
-      Unsigned public offer of service. 62 bytes payload.
+      Unsigned public offer of service. 66 bytes payload.
+
+      VOID-114B: _pad_head and _pre_crc added so epoch_ts lands on
+      a natural 8-byte boundary and crc32 on a 4-byte boundary
+      under both 6B CCSDS and 14B SNLP headers.
     seq:
+      - id: pad_head
+        size: 2
+        doc: "Cycle alignment pad (VOID-114B). Pushes epoch_ts to 8-aligned."
       - id: epoch_ts
         type: u8
         doc: "Unix timestamp. Replay protection."
@@ -195,22 +204,38 @@ types:
         type: u2
         enum: tig_common_types::asset_id
         doc: "Currency Type ID. MUST be a verified stablecoin."
+      - id: pre_crc
+        size: 2
+        doc: "CRC alignment pad (VOID-114B). Pushes crc32 to 4-aligned."
       - id: crc32
         type: u4
         doc: "Invoice integrity checksum."
 
-  # --- PACKET B: Payment (170 Bytes) ---
+  # --- PACKET B: Payment (178 Bytes, VOID-110 + VOID-114B) ---
   packet_b_body:
     doc: |
       The Encrypted Payment. Sent by Sat B (Mule) to Ground Station.
-      
+      178 bytes payload (174 data + 4-byte _tail_pad).
+
       Encryption Logic:
         Enterprise (CCSDS): enc_payload is ChaCha20-Poly1305 ciphertext.
         Community (SNLP):   enc_payload is PLAINTEXT (amateur radio compliance).
+
+      VOID-110: ChaCha20 nonce is derived as sat_id[4] || epoch_ts[8]
+      (12 bytes). It is NEVER transmitted on the wire. The former
+      `nonce` field is now `_pre_sig` (alignment pad).
+
+      VOID-114B: _pad_head, _pre_sat, _pre_sig, and _tail_pad added
+      so every critical field (epoch_ts, sat_id, signature, global_crc)
+      lands on its natural alignment boundary under both headers.
+      Signature covers header + body[0..105] (106 body bytes).
     seq:
+      - id: pad_head
+        size: 2
+        doc: "Cycle alignment pad (VOID-114B). Pushes epoch_ts to 8-aligned."
       - id: epoch_ts
         type: u8
-        doc: "Sat B timestamp. Used for nonce derivation."
+        doc: "Sat B timestamp. Used for nonce derivation (VOID-110)."
       - id: pos_vec
         type: tig_common_types::vector_3d
         doc: "Sat B ECEF position. Cleartext."
@@ -219,18 +244,24 @@ types:
         doc: |
           Inner Invoice (62 bytes).
           Plaintext if SNLP, ChaCha20 ciphertext if CCSDS.
+      - id: pre_sat
+        size: 2
+        doc: "sat_id alignment pad (VOID-114B). Pushes sat_id to 4-aligned."
       - id: sat_id
         type: u4
         doc: "Sat B ID (Mule). 32-bit global identity."
-      - id: nonce
-        type: u4
-        doc: "Encryption nonce counter."
+      - id: pre_sig
+        size: 4
+        doc: "Signature alignment pad (VOID-114B). Pushes signature to 8-aligned."
       - id: signature
         type: tig_common_types::ed25519_signature
-        doc: "PUF Signature over payload fields."
+        doc: "Ed25519 PUF Signature over header + body[0..105]."
       - id: global_crc
         type: u4
         doc: "Outer packet integrity checksum."
+      - id: tail_pad
+        size: 4
+        doc: "Frame tail pad (VOID-114B). CCSDS total 184 (÷8), SNLP total 192 (÷64 cache line)."
 
   # --- PACKET H: Handshake (106 Bytes) ---
   packet_h_body:
@@ -417,24 +448,43 @@ types:
         type: u4
         doc: "Outer checksum."
 
-  # --- HEARTBEAT (34 Bytes) ---
+  # --- HEARTBEAT (34 Bytes, VOID-114B) ---
   heartbeat_body:
     doc: |
       System Heartbeat. Health, status, and GPS telemetry.
       Transmitted periodically for ground station monitoring.
+      34 bytes payload.
+
+      VOID-114B: field order matches C++ HeartbeatPacket_t in
+      void_packets_{ccsds,snlp}.h and Go generator genPacketL.
+      _pad_head added so epoch_ts lands on 8-byte boundary.
+      The legacy reserved[2] field is dropped (never used);
+      _pad_head is the forward-compat slot.
     seq:
+      - id: pad_head
+        size: 2
+        doc: "Cycle alignment pad (VOID-114B). Pushes epoch_ts to 8-aligned."
       - id: epoch_ts
         type: u8
         doc: "Unix timestamp."
+      - id: pressure_pa
+        type: u4
+        doc: "Barometric pressure in Pascals."
+      - id: lat_fixed
+        type: s4
+        doc: "Latitude * 10^7 (e.g., 515000000 = 51.5° N). Signed: negative = South."
+      - id: lon_fixed
+        type: s4
+        doc: "Longitude * 10^7 (e.g., -128000 = -0.0128° W). Signed: negative = West."
       - id: vbatt_mv
         type: u2
         doc: "Battery voltage in millivolts."
       - id: temp_c
         type: s2
-        doc: "Internal temp in centidegrees (2500 = 25.00°C)."
-      - id: pressure_pa
-        type: u4
-        doc: "Barometric pressure in Pascals."
+        doc: "Internal temp in centidegrees (2300 = 23.00°C)."
+      - id: gps_speed_cms
+        type: u2
+        doc: "Ground speed in cm/s (600 = 6.0 m/s)."
       - id: sys_state
         type: u1
         enum: tig_common_types::sys_state
@@ -442,15 +492,6 @@ types:
       - id: sat_lock
         type: u1
         doc: "GPS satellite count."
-      - id: gps_coords
-        type: tig_common_types::gps_fixed_point
-        doc: "Fixed-point lat/lon (scaled by 10^7)."
-      - id: reserved_interval
-        size: 2
-        doc: "Reserved for 2026 payload expansion."
-      - id: gps_speed_cms
-        type: u2
-        doc: "Ground speed in cm/s (540 = 5.4 m/s)."
       - id: crc32
         type: u4
         doc: "Heartbeat integrity checksum."
