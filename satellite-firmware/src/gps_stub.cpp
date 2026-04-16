@@ -24,6 +24,12 @@
 // Added to millis() to produce a plausible Unix-epoch timestamp.
 static const uint64_t kEpochBaseMs = 1790985600000ULL;
 
+// Epoch base must be post-2026 and pre-2030 to stay plausible.
+static_assert(kEpochBaseMs > 1767225600000ULL,  // 2026-01-01
+              "Epoch base too far in the past");
+static_assert(kEpochBaseMs < 1893456000000ULL,  // 2030-01-01
+              "Epoch base too far in the future");
+
 // ── WGS84 constants ────────────────────────────────────────────────
 static const double kWgs84A  = 6378137.0;           // semi-major axis (m)
 static const double kWgs84E2 = 6.69437999014e-3;    // first eccentricity squared
@@ -66,6 +72,23 @@ static const GeoWaypoint kTrajectory[] = {
     {  9600, 52.4100,  0.3200,     50.0 },  // 160 min — landing
 };
 static const size_t kTrajectoryLen = sizeof(kTrajectory) / sizeof(kTrajectory[0]);
+
+// ── Trajectory compile-time guards ──────────────────────────────────
+// These prevent silent corruption of the trajectory table.
+static_assert(sizeof(kTrajectory) / sizeof(kTrajectory[0]) == 11,
+              "Trajectory must have exactly 11 waypoints — do not add/remove without updating this assert");
+// First waypoint must be t=0 (launch origin).
+static_assert(kTrajectory[0].t_sec == 0,
+              "Trajectory must start at t=0");
+// Last waypoint must be the expected flight duration (9600s = 160 min).
+static_assert(kTrajectory[10].t_sec == 9600,
+              "Trajectory must end at t=9600s (160 min)");
+// Burst altitude sanity: waypoint 6 (100 min) should be peak (~30 km).
+static_assert(kTrajectory[6].alt_m > 29000.0 && kTrajectory[6].alt_m < 35000.0,
+              "Burst waypoint altitude must be 29-35 km");
+// Landing altitude sanity: last waypoint should be near ground.
+static_assert(kTrajectory[10].alt_m < 200.0,
+              "Landing waypoint must be below 200m ASL");
 
 // ── Linear interpolation between two waypoints ─────────────────────
 static double lerp(double a, double b, double t) {

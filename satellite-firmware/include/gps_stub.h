@@ -24,6 +24,14 @@ struct GeoWaypoint {
     double   alt_m;
 };
 
+// ── Compile-time guards ────────────────────────────────────────────
+// ECEF output (double[3]) must match the pos_vec field in PacketA/B/Heartbeat.
+static_assert(sizeof(double) * 3 == 24,
+              "ECEF pos_vec must be 24 bytes (3 x IEEE 754 f64)");
+// Epoch timestamp must match the epoch_ts field width.
+static_assert(sizeof(uint64_t) == 8,
+              "epoch_ts must be 8 bytes (u64 ms since Unix epoch)");
+
 class GpsStubClass {
 public:
     // Initialise the stub. Call once from setup().
