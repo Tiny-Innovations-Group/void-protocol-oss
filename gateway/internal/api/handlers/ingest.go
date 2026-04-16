@@ -211,6 +211,20 @@ func IngestPacket(c *gin.Context) {
 	apid, _ := packet.GlobalApid()
 	isSnlp, _ := packet.IsSnlp()
 
+	// C-02: CCSDS 133.0-B-2 §4.1.3.1 — Version Number MUST be 0 (Version 1).
+	// Kaitai `valid:` cannot enforce this on computed instances; enforced here.
+	var ccsdsVersion int
+	if isSnlp {
+		ccsdsVersion, _ = packet.RoutingHeader.(*void_protocol.VoidProtocol_HeaderSnlp).Ccsds.Version()
+	} else {
+		ccsdsVersion, _ = packet.RoutingHeader.(*void_protocol.VoidProtocol_HeaderCcsds).Version()
+	}
+	if ccsdsVersion != 0 {
+		log.Printf("⛔ BOUNCE: Unknown CCSDS version %d — only Version 1 (0b000) accepted", ccsdsVersion)
+		c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"error": "Unknown CCSDS version — only Version 1 accepted"})
+		return
+	}
+
 	tier := "Enterprise (CCSDS)"
 	if isSnlp {
 		tier = "Community (SNLP)"
