@@ -34,6 +34,8 @@
     #define SIZE_HEARTBEAT_PCK  40   // 6 (Head) + 32 (Body)
 
 
+    #define SIZE_VOID_HEADER        SIZE_CCSDS_HEADER
+
     #include "void_packets_ccsds.h"
 
 
@@ -51,6 +53,8 @@
     #define SIZE_TUNNEL_DATA        96      // Tunnel Data (from PacketAck_t::enc_tunnel)
     #define SIZE_HEARTBEAT_PCK  48   // 14 (Head) + 32 (Body)
 
+
+    #define SIZE_VOID_HEADER        SIZE_SNLP_HEADER
 
     #include "void_packets_snlp.h"
 

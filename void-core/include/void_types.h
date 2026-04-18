@@ -23,7 +23,7 @@
 
 /* --- PROTOCOL CONSTANTS --- */
 #define VOID_PROTOCOL_VERSION   0x01
-#define VOID_MAX_PACKET_SIZE    184     // Max MTU (Packet B)
+#define VOID_MAX_PACKET_SIZE    255     // SX1262 LoRa PHY payload ceiling (CLAUDE.md hard rule)
 #define VOID_SESSION_TTL_DEF    600     // Default session window (10 mins)
 
 /* --- CRYPTO SIZES --- */

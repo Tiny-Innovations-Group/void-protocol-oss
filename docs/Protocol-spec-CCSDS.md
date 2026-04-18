@@ -107,11 +107,9 @@ Both sender and receiver can reconstruct the identical nonce from the packet con
 
 Without these guardrails a clock rollback (brownout, flash failure, or deliberate tamper) would cause nonce reuse and full keystream recovery. These guardrails are mandatory; they ship with the fix, not as a follow-up.
 
-### 3.3. Inner Invoice Payload (62 Bytes)
+### 3.3 Inner Invoice Payload (62 Bytes)
 
-### 3.4. Inner Invoice Payload (62 Bytes)
-
-_The Plaintext data recovered from `enc_payload` after decryption._
+_The plaintext data recovered from `enc_payload` after decryption. Byte-identical to the SNLP tier — see [Protocol-spec-SNLP.md §4.3](Protocol-spec-SNLP.md)._
 
 | Offset    | Field      | Type     | Size | Description                                  |
 | --------- | ---------- | -------- | ---- | -------------------------------------------- |
@@ -167,6 +165,40 @@ Sat B serves as a data courier (mule). To prevent buffer overflows, it uses a de
 - **Capacity:** 10 Receipts (~1.3 KB RAM).
 - **Eviction:** "Drop Oldest" ensures only the most recent network states are prioritized.
 - **Deduplication:** Incoming receipts are checked against the queue's `target_tx_id` to prevent redundant storage.
+
+---
+
+## 6. Implementation Logic (The Bouncer)
+
+The Ground Station `Bouncer` acts as a dual-mode firewall that accepts traffic from both the CCSDS Enterprise tier and the SNLP Community tier, minimising heap allocations and branching logic.
+
+### 6.1 Multiplexer Logic
+
+1. **Read First 4 Bytes (32-bit Int):**
+   * If `0x1D01A5A5`: The packet is **SNLP**. The pointer skips the 4-byte Sync Word, maps the 6-byte CCSDS fields, and ignores the 4-byte alignment buffer.
+   * If the first 3 bits are `000`: The packet is **Enterprise CCSDS**. The buffer is cast directly to the standard CCSDS struct without advancing the pointer.
+2. **Discard Header:** The routing header is evaluated and then discarded before signature validation.
+3. **Validate Inner Payload:** The body is extracted, the Ed25519 signature is mathematically verified against `header + body[0..pre_sig]`, and the payload is routed to the Go Gateway. The `_tail_pad` is ignored — it is frame-total alignment filler, not part of the signed or CRC-covered region.
+
+---
+
+## 7. Use Case Scenarios
+
+### 7.1 Enterprise LEO / GEO Settlement
+
+Commercial satellites on licensed S-Band or X-Band uplink directly to operator-owned ground stations (AWS Ground Station, KSAT, Viasat). The CCSDS primary header guarantees compatibility with existing downlink infrastructure; the VOID payload travels inside the CCSDS data field as opaque telemetry as far as the operator is concerned, and the Go Gateway is co-located behind the station firewall.
+
+* **Modulation:** Licensed-band (S / X / Ka).
+* **Relay:** Operator-owned station, no community hand-off.
+* **Settlement:** Private L2 contract, enterprise key custody.
+
+### 7.2 Inter-Satellite Relay (Mesh Mule)
+
+Sat A broadcasts an invoice that is captured by a Sat B mule in the same orbital plane, which then downlinks Packet B during its own ground-station pass. The CCSDS tier is preferred here because the encrypted `enc_payload` prevents intermediate mules from observing transaction contents.
+
+### 7.3 Hardware Requirements
+
+CCSDS tier targets **licensed-band transceivers** (S-Band + above) on mission-grade buses. Reference hardware is anything with a CCSDS-compliant framer — the VOID spec is radio-agnostic above the framer. ESP32-S3 and ARM Cortex-M are the reference compute targets for hardware-accelerated SHA-256 and ChaCha20 (see §1.1).
 
 ---
 
