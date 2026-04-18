@@ -109,17 +109,21 @@ void VoidProtocol::hexDump(const uint8_t *data, size_t len)
     Serial.println();
 }
 
-// Simple CRC32 wrapper (or use Sodium's logic)
-// CRC32 Stub - In production, replace with hardware CRC or optimized table
+// IEEE 802.3 CRC32 (reflected, polynomial 0xEDB88320, init/final 0xFFFFFFFF).
+// Byte-identical to Go's hash/crc32.ChecksumIEEE — required so firmware
+// PacketB.global_crc matches the gateway-side parser and the checked-in
+// golden vectors under test/vectors/.
 uint32_t VoidProtocol::calculateCRC(const uint8_t *data, size_t len)
 {
-    uint32_t crc = 0xFFFFFFFF;
-    // Simple Loop (Not real CRC32, but consistent for demo)
-    for (size_t i = 0; i < len; i++)
-    {
+    uint32_t crc = 0xFFFFFFFFu;
+    for (size_t i = 0; i < len; ++i) {
         crc ^= data[i];
+        for (int b = 0; b < 8; ++b) {
+            const uint32_t mask = (crc & 1u) ? 0xEDB88320u : 0u;
+            crc = (crc >> 1) ^ mask;
+        }
     }
-    return crc;
+    return ~crc;
 }
 
 #ifdef DEMO
