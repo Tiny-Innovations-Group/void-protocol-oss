@@ -4,16 +4,32 @@ import (
 	"log"
 )
 
-// SatRecord holds the critical identity data for a satellite
+// SatRecord holds the critical identity data for a satellite.
+//
+// The Wallet field is the seller's EVM recipient address — the same
+// value the gateway writes into the on-chain Escrow.SettlementIntent
+// when it calls settleBatch (VOID-052 / journey #14). For flat-sat
+// the address is hardcoded per sat_id; Phase B replaces this with a
+// real registry backed by Ed25519-signed attestations (post-HAB).
 type SatRecord struct {
 	SatID     uint32
 	PubKeyHex string // Ed25519 Public Key
-	Wallet    string // Ethereum/L2 Wallet Address
+	Wallet    string // Ethereum/L2 Wallet Address (EIP-55 checksummed)
 	Role      string // "Seller" or "Mule"
 }
 
 // MockDB simulates our NoSQL database
 var MockDB = map[uint32]SatRecord{}
+
+// Deterministic flat-sat sat_id and wallet. The sat_id matches the
+// golden-vector constant (`detSatId = 0xCAFEBABE` in
+// gateway/test/utils/generate_packets.go) and the wallet is Anvil
+// default account #1, the same address the Foundry tests bind to
+// sat_id 0xCAFEBABE.
+const (
+	FlatSatDemoSatID  uint32 = 0xCAFEBABE
+	FlatSatDemoWallet        = "0x70997970C51812dc3A010C7d01b50e0d17dc79C8"
+)
 
 // Initialize populates our hardcoded registry
 func Initialize() {
@@ -31,6 +47,18 @@ func Initialize() {
 		PubKeyHex: "4102f95e145ccbaea5959f51cdf2e52e31b2de6bc19ae9ba1347f57e31549dd3",
 		Wallet:    "0x9F8E7D6C5B4A39281706F5E4D3C2B1A09F8E7D6C",
 		Role:      "Mule",
+	}
+
+	// Flat-sat deterministic seller (VOID-052). The pubkey is injected
+	// by the gateway startup wiring when it loads the demo seed; seed
+	// the wallet here so the sat_id → wallet lookup is live even before
+	// pubkey injection. Production registries replace this entry with a
+	// real attestation.
+	MockDB[FlatSatDemoSatID] = SatRecord{
+		SatID:     FlatSatDemoSatID,
+		PubKeyHex: "", // filled in by demo-key loader
+		Wallet:    FlatSatDemoWallet,
+		Role:      "Seller",
 	}
 
 	log.Println("🗄️  Registry Initialized with Hardcoded Satellites")
