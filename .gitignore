@@ -14,8 +14,10 @@ dist/
 downloads/
 eggs/
 .eggs/
-lib/
-lib64/
+# Python distribution dirs — anchored to repo root so the rule does NOT
+# catch nested library dirs like `contracts/lib/` (Foundry submodules).
+/lib/
+/lib64/
 parts/
 sdist/
 var/
