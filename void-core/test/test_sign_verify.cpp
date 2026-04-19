@@ -38,6 +38,7 @@ constexpr uint32_t kSatId      = 0xCAFEBABEu;
 constexpr uint64_t kAmount     = 420000000ULL;
 constexpr uint16_t kAssetId    = 1;
 constexpr double   kPosVec[3]  = {7010.0, -11990.0, 560.0};
+constexpr float    kVelVec[3]  = {7.5f, -0.2f, 0.01f};
 constexpr uint32_t kSyncWord   = 0x1D01A5A5u;
 constexpr uint16_t kApidSatB   = 101;
 
@@ -163,17 +164,38 @@ TEST(SignVerifyTest, PacketBMatchesGoldenByteForByte) {
         std::memcpy(&bits, &kPosVec[i], sizeof(double));
         WriteU64LE(frame, &off, bits);
     }
-    // enc_payload: structured plaintext (SNLP default / CCSDS test input)
+    // enc_payload: Inner Invoice Payload (62B) — verbatim echo of the paired
+    // PacketA body per Protocol-spec-SNLP.md §4.3 / CCSDS §3.3. The trailing
+    // crc32 is the ORIGINAL invoice CRC, which we pull directly from the
+    // paired golden PacketA so any divergence surfaces here too.
     const size_t enc_start = off;
-    WriteU64LE(frame, &off, kEpochTsMs);                  // InvoiceTs
-    WriteU32LE(frame, &off, static_cast<uint32_t>(kAmount));
-    WriteU16LE(frame, &off, kAssetId);
-    std::memcpy(frame + off, "PAYMENT_INTENT", 14);
-    off += 14;
-    // zero-fill to 62 bytes
-    while (off - enc_start < 62) {
-        frame[off++] = 0;
+    WriteU64LE(frame, &off, kEpochTsMs);                          // epoch_ts (8B)
+    for (int i = 0; i < 3; ++i) {
+        uint64_t bits = 0;
+        std::memcpy(&bits, &kPosVec[i], sizeof(double));
+        WriteU64LE(frame, &off, bits);                            // pos_vec f64[3]
     }
+    for (int i = 0; i < 3; ++i) {
+        uint32_t bits = 0;
+        std::memcpy(&bits, &kVelVec[i], sizeof(float));
+        WriteU32LE(frame, &off, bits);                            // vel_vec f32[3]
+    }
+    WriteU32LE(frame, &off, kSatId);                              // sat_id   (4B)
+    WriteU64LE(frame, &off, kAmount);                             // amount   (8B)
+    WriteU16LE(frame, &off, kAssetId);                            // asset_id (2B)
+    {
+        uint8_t golden_a[256] = {0};
+        const size_t golden_a_len =
+            ReadVector("packet_a.bin", golden_a, sizeof(golden_a));
+        ASSERT_EQ(golden_a_len, SIZE_PACKET_A)
+            << "golden packet_a.bin missing / wrong size — "
+               "Inner Invoice Payload needs its CRC";
+        uint32_t inv_crc = 0;
+        std::memcpy(&inv_crc, golden_a + SIZE_PACKET_A - 4, 4);
+        WriteU32LE(frame, &off, inv_crc);                         // crc32    (4B)
+    }
+    ASSERT_EQ(off - enc_start, 62u)
+        << "Inner Invoice Payload drifted from 62 B (SNLP §4.3)";
 
     off += 2;                                             // _pre_sat
     WriteU32LE(frame, &off, kSatId);                      // sat_id

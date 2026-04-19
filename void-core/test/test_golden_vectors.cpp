@@ -18,6 +18,7 @@
 #include <cstring>
 #include <string>
 #include "void_packets.h"
+#include "void_payment_payload.h"
 
 #ifndef VOID_TEST_VECTORS_DIR
 #error "VOID_TEST_VECTORS_DIR must be defined by CMake (absolute path to test/vectors)."
@@ -90,17 +91,37 @@ TEST(GoldenVectorsTest, PacketAFields) {
 TEST(GoldenVectorsTest, PacketBFields) {
     PacketB_t pkt{};
     ASSERT_TRUE(LoadPacket("packet_b.bin", &pkt));
+
+    // Outer mule fields
     EXPECT_EQ(pkt.epoch_ts, kEpochTsMs);
     EXPECT_DOUBLE_EQ(pkt.pos_vec[0], kPosVec0);
     EXPECT_DOUBLE_EQ(pkt.pos_vec[1], kPosVec1);
     EXPECT_DOUBLE_EQ(pkt.pos_vec[2], kPosVec2);
     EXPECT_EQ(pkt.sat_id, kSatId);
-    // First 8 bytes of enc_payload hold the deterministic InvoiceTs.
-    uint64_t invoice_ts = 0;
-    std::memcpy(&invoice_ts, pkt.enc_payload, sizeof(invoice_ts));
-    EXPECT_EQ(invoice_ts, kEpochTsMs);
-    // "PAYMENT_INTENT" marker embedded in enc_payload starting at byte 14.
-    EXPECT_EQ(std::memcmp(pkt.enc_payload + 14, "PAYMENT_INTENT", 14), 0);
+
+    // Inner Invoice Payload (62B) — verbatim echo of PacketA body fields
+    // per Protocol-spec-SNLP.md §4.3 / Protocol-spec-CCSDS.md §3.3.
+    static_assert(sizeof(InvoicePayload_t) == sizeof(pkt.enc_payload),
+                  "InvoicePayload_t must fit PacketB_t::enc_payload");
+    InvoicePayload_t inner{};
+    std::memcpy(&inner, pkt.enc_payload, sizeof(InvoicePayload_t));
+    EXPECT_EQ(inner.epoch_ts, kEpochTsMs);
+    EXPECT_DOUBLE_EQ(inner.pos_vec[0], kPosVec0);
+    EXPECT_DOUBLE_EQ(inner.pos_vec[1], kPosVec1);
+    EXPECT_DOUBLE_EQ(inner.pos_vec[2], kPosVec2);
+    EXPECT_FLOAT_EQ(inner.vel_vec[0], kVelVec0);
+    EXPECT_FLOAT_EQ(inner.vel_vec[1], kVelVec1);
+    EXPECT_FLOAT_EQ(inner.vel_vec[2], kVelVec2);
+    EXPECT_EQ(inner.sat_id,   kSatId);
+    EXPECT_EQ(inner.amount,   kAmount);
+    EXPECT_EQ(inner.asset_id, kAssetId);
+
+    // inner.crc32 must equal the CRC32 in the paired PacketA golden vector
+    // (the gateway cross-checks this to reject substitution attacks).
+    PacketA_t ref_a{};
+    ASSERT_TRUE(LoadPacket("packet_a.bin", &ref_a));
+    EXPECT_EQ(inner.crc32, ref_a.crc32);
+
     // _tail_pad (VOID-114B) must be zero on the wire.
     for (size_t i = 0; i < sizeof(pkt._tail_pad); ++i) {
         EXPECT_EQ(pkt._tail_pad[i], 0u) << "tail pad byte " << i << " nonzero";
