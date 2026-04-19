@@ -144,13 +144,25 @@ func genPacketB(isSnlp bool) []byte {
 	writeLE(&body, detEpochTsMs)   // EpochTs
 	writeLE(&body, detPosVec[:])   // PosVec (24B)
 
-	// Structured enc_payload (62B) — plaintext under SNLP per spec.
+	// Inner Invoice Payload (62B) — verbatim echo of the paired PacketA
+	// body per Protocol-spec-SNLP.md §4.3 / Protocol-spec-CCSDS.md §3.3.
+	// Plaintext under default SNLP (amateur-band compliant). The trailing
+	// crc32 is the ORIGINAL invoice CRC; the gateway matches it against
+	// its cached PacketA to reject substitution attacks.
+	packetA := genPacketA(isSnlp)
+	detInvoiceCRC := binary.LittleEndian.Uint32(packetA[len(packetA)-4:])
+
 	var enc bytes.Buffer
-	writeLE(&enc, detEpochTsMs)         // InvoiceTs
-	writeLE(&enc, uint32(detAmount))    // Amount (u32 slot)
-	writeLE(&enc, detAssetId)           // AssetId
-	enc.Write([]byte("PAYMENT_INTENT")) // Intent string
-	enc.Write(make([]byte, 62-enc.Len()))
+	writeLE(&enc, detEpochTsMs)   // epoch_ts (8B)
+	writeLE(&enc, detPosVec[:])   // pos_vec  (24B, f64[3])
+	writeLE(&enc, detVelVec[:])   // vel_vec  (12B, f32[3])
+	writeLE(&enc, detSatId)       // sat_id   (4B)
+	writeLE(&enc, detAmount)      // amount   (8B)
+	writeLE(&enc, detAssetId)     // asset_id (2B)
+	writeLE(&enc, detInvoiceCRC)  // crc32    (4B) — CRC of paired PacketA
+	if enc.Len() != 62 {
+		log.Fatalf("FATAL: Inner Invoice Payload is %d bytes, expected 62", enc.Len())
+	}
 	body.Write(enc.Bytes())
 
 	body.Write([]byte{0x00, 0x00}) // PreSat
