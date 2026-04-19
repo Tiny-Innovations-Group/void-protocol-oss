@@ -2,16 +2,30 @@ package handlers
 
 import (
 	"bytes"
+	"encoding/binary"
 	"encoding/json"
 	"io"
 	"log"
+	"math/big"
 	"net/http"
 
+	"github.com/Tiny-Innovations-Group/void-protocol-oss/gateway/internal/core/chain"
+	"github.com/Tiny-Innovations-Group/void-protocol-oss/gateway/internal/core/registry"
 	"github.com/Tiny-Innovations-Group/void-protocol-oss/gateway/internal/core/security"
 	void_protocol "github.com/Tiny-Innovations-Group/void-protocol-oss/gateway/internal/void_protocol"
+	"github.com/ethereum/go-ethereum/common"
 	"github.com/gin-gonic/gin"
 	"github.com/kaitai-io/kaitai_struct_go_runtime/kaitai"
 )
+
+// Submitter is the optional on-chain settlement enqueue hook (VOID-052).
+// The server wires a *chain.BufferedSubmitter into this var at startup;
+// tests inject a mock to assert enqueue behaviour without a simulated
+// chain. nil means "no on-chain pipeline" — every other handler path
+// still works (HTTP 200, sig verify, CRC gate), the intent is just not
+// submitted. This keeps existing tests and the Kaitai parser suite
+// independent of the chain package.
+var Submitter chain.Enqueuer
 
 // Helper function to pretty-print any struct as JSON -> useful for debugging complex payloads
 func prettyPrintStruct(name string, v interface{}) {
@@ -32,6 +46,56 @@ const (
 	magicPacketD   byte = 0xD0
 	magicPacketAck byte = 0xAC
 )
+
+// enqueueSettlementIntent extracts {amount, asset_id} from the 62-byte
+// InvoicePayload, looks up the seller wallet from the registry, derives
+// the on-chain txNonce, and hands the result to the package-level
+// Submitter. Safe to call only after Ed25519 verification has passed.
+//
+// Layout echoed from Protocol-spec-SNLP.md §4.3 / CCSDS §3.3:
+//
+//	00-07 epoch_ts  (not needed here — we use b.EpochTs instead)
+//	08-31 pos_vec   (ignored)
+//	32-43 vel_vec   (ignored)
+//	44-47 sat_id    (ignored — b.SatId is the authoritative source)
+//	48-55 amount    (u64 LE — extracted below)
+//	56-57 asset_id  (u16 LE — extracted below)
+//	58-61 crc32     (ignored — invoice's own CRC, not relevant to settle)
+func enqueueSettlementIntent(b *void_protocol.VoidProtocol_PacketBBody) {
+	const innerLen = 62
+	if len(b.EncPayload) != innerLen {
+		log.Printf("level=warn event=packetb.enqueue_skip reason=inner_payload_len len=%d want=%d",
+			len(b.EncPayload), innerLen)
+		return
+	}
+	satRec, exists := registry.GetSat(b.SatId)
+	if !exists {
+		// Unreachable in practice — VerifyPacketSignature rejects
+		// unknown sat_ids upstream — but log + skip defensively so a
+		// future refactor of the verify path can't silently submit
+		// intents with no wallet.
+		log.Printf("level=warn event=packetb.enqueue_skip reason=unknown_sat sat_id=%d", b.SatId)
+		return
+	}
+	if satRec.Wallet == "" {
+		log.Printf("level=warn event=packetb.enqueue_skip reason=empty_wallet sat_id=%d", b.SatId)
+		return
+	}
+	amount := binary.LittleEndian.Uint64(b.EncPayload[48:56])
+	assetID := binary.LittleEndian.Uint16(b.EncPayload[56:58])
+	intent := chain.SettlementIntent{
+		SatId:   b.SatId,
+		Amount:  new(big.Int).SetUint64(amount),
+		AssetId: assetID,
+		TxNonce: chain.DeriveTxNonce(b.SatId, b.EpochTs),
+		Wallet:  common.HexToAddress(satRec.Wallet),
+	}
+	Submitter.Enqueue(intent)
+	log.Printf(
+		"level=info event=packetb.enqueued sat_id=%d amount=%d asset_id=%d nonce=%s wallet=%s",
+		b.SatId, amount, assetID, intent.TxNonce.String(), intent.Wallet.Hex(),
+	)
+}
 
 // bodyOffsetZero returns the byte at body offset 0 for a parsed frame,
 // or false if the raw buffer is too short to contain a body byte after
@@ -104,6 +168,13 @@ func handlePayloadBody(body interface{}, rawData *[]byte, c *gin.Context, packet
 			log.Printf("level=warn event=packetb.sig_fail sat_id=%d err=%q", b.SatId, err.Error())
 			c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"error": "Invalid Cryptographic Signature"})
 			return true // ⛔ BOUNCE THE HACKER
+		}
+		// VOID-052: once structurally sound and sig-verified, hand the
+		// settlement intent to the BufferedSubmitter (or a test mock).
+		// nil Submitter = "no on-chain pipeline wired" — still a valid
+		// config for unit tests of the parse/verify path alone.
+		if Submitter != nil {
+			enqueueSettlementIntent(b)
 		}
 		return true
 

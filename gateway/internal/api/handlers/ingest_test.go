@@ -64,8 +64,12 @@ func registerTestPubKey(t *testing.T) {
 	registry.MockDB[detTestSatID] = registry.SatRecord{
 		SatID:     detTestSatID,
 		PubKeyHex: hex.EncodeToString(pub),
-		Wallet:    "test-only",
-		Role:      "Test",
+		// Anvil acct #1 — the deterministic seller wallet for sat_id
+		// 0xCAFEBABE. Matches registry.FlatSatDemoWallet and the Foundry
+		// EscrowTest fixture so VOID-052 integration can round-trip a
+		// real on-chain intent if the Submitter is wired.
+		Wallet: registry.FlatSatDemoWallet,
+		Role:   "Test",
 	}
 }
 
