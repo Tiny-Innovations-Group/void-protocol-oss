@@ -20,12 +20,53 @@
 #include "serial_hal.h"
 #include "bouncer.h"
 #include "gateway_client.h"
+#include "egress_poll_client.h"
+#include "egress_orchestrator.h"
 
 // --- Global State ---
 // Stack-allocated modules (No Heap) as per .cursorrules
 std::atomic<bool> is_running{true};
 Bouncer edge_firewall;
 GatewayClient go_gateway("127.0.0.1", 8080);
+
+// VOID-138: egress poll client pointed at the same gateway as
+// `go_gateway`. Constructed with the same host/port so a local-Anvil
+// flat-sat invocation "just works" without env-var fiddling. Tuneable
+// via VOID_GATEWAY_HOST / VOID_GATEWAY_PORT at runtime below.
+egress::EgressPollClient egress_client("127.0.0.1", 8080);
+
+// VOID-138: LoRa TX callback. For flat-sat, the bouncer hands the
+// 112-byte PacketC frame to the satellite firmware over USB-serial
+// using a PACKET_C_TX:<hex>\n command line — the firmware's LoRa
+// radio driver does the actual RF TX. Returns true iff the serial
+// write succeeded (which is the bouncer's completion signal; the
+// firmware-side LoRa TX may still fail independently, and that's a
+// future ticket's concern).
+static bool lora_tx_via_serial(const uint8_t* data, size_t len, void* /*user*/) {
+    // Re-encode the decoded PacketC back into ASCII hex so the firmware
+    // receives the same line format it already handles for other packet
+    // types (INVOICE:, PACKET_B:, etc.).
+    // The orchestrator decoded to bytes so the production path stays
+    // agnostic of transport; re-encoding here owns the serial-line
+    // convention used by the existing firmware.
+    static constexpr size_t kPrefixLen = 13; // "PACKET_C_TX:"
+    static constexpr size_t kMaxHex    = egress::EgressPacketCSize * 2;
+    static constexpr size_t kLineCap   = kPrefixLen + kMaxHex + 2; // +\n +\0
+    char line[kLineCap];
+    std::snprintf(line, sizeof(line), "PACKET_C_TX:");
+    static const char kDigits[] = "0123456789abcdef";
+    for (size_t i = 0; i < len && i < egress::EgressPacketCSize; ++i) {
+        line[kPrefixLen + i * 2]     = kDigits[(data[i] >> 4) & 0x0Fu];
+        line[kPrefixLen + i * 2 + 1] = kDigits[data[i] & 0x0Fu];
+    }
+    const size_t line_len = kPrefixLen + len * 2u;
+    line[line_len]     = '\n';
+    line[line_len + 1] = '\0';
+
+    const int n = serial_write_bytes(reinterpret_cast<const uint8_t*>(line),
+                                     line_len + 1);
+    return n >= 0;
+}
 
 // --- Helper: Hex to Binary (No Heap) ---
 void hex_to_bin(const char* hex, uint8_t* bin_out, size_t max_len) {
@@ -69,6 +110,54 @@ static void test_ack() {
     } else {
         std::puts("[BOUNCER] ❌ Packet dropped by firewall.");
     }
+}
+
+// VOID-138: egress poll thread. Drains pending receipts from the Go
+// gateway every `interval_ms` and dispatches each PacketC via LoRa
+// (through the serial HAL). Exits cleanly on `is_running = false`.
+//
+// Env tuning:
+//   VOID_EGRESS_POLL_MS   — poll interval (default 1000 ms)
+//   VOID_EGRESS_DISABLED  — set to "1" to skip the thread entirely
+//
+// Non-fatal errors are logged and the loop continues — the gateway's
+// PENDING state is authoritative, so a transient failure here just
+// means the record stays PENDING and gets re-offered next tick.
+void egress_poll_listener() {
+    const char* disabled = std::getenv("VOID_EGRESS_DISABLED");
+    if (disabled != nullptr && std::strcmp(disabled, "1") == 0) {
+        std::puts("[EGRESS] VOID_EGRESS_DISABLED=1 — poll thread not started.");
+        return;
+    }
+
+    // Interval: parse env var if set, else default 1000 ms.
+    unsigned interval_ms = 1000;
+    if (const char* iv = std::getenv("VOID_EGRESS_POLL_MS")) {
+        char* endp = nullptr;
+        const long v = std::strtol(iv, &endp, 10);
+        if (endp != nullptr && *endp == '\0' && v > 0 && v <= 60000) {
+            interval_ms = static_cast<unsigned>(v);
+        }
+    }
+
+    egress::EgressOrchestrator<egress::EgressPollClient> orch(
+        egress_client, lora_tx_via_serial, nullptr);
+    std::printf("[EGRESS] 🔁 Polling gateway for pending receipts every %u ms.\n",
+                interval_ms);
+
+    while (is_running) {
+        const int dispatched = orch.tick();
+        if (dispatched > 0) {
+            std::printf("[EGRESS] ✅ Dispatched %d receipt(s) this tick.\n",
+                        dispatched);
+        } else if (dispatched < 0) {
+            // Transport or parse error — wait out the tick and retry.
+            // Common during startup before the gateway has its HTTP
+            // listener up.
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(interval_ms));
+    }
+    std::puts("[EGRESS] Shutting down poll thread.");
 }
 
 // --- Background CLI Thread ---
@@ -120,6 +209,9 @@ int main(int argc, char* argv[]) {
 
     // Spawn the CLI in the background
     std::thread cli_thread(cli_listener);
+
+    // VOID-138: spawn the egress poll thread. Joined below on shutdown.
+    std::thread egress_thread(egress_poll_listener);
 
     // Buffers for reading USB Serial streams
     uint8_t rx_buf[256];
@@ -179,7 +271,11 @@ int main(int argc, char* argv[]) {
     }
 
     // Cleanup
-    cli_thread.detach(); 
+    cli_thread.detach();
+    // VOID-138: egress poll thread watches `is_running` and exits
+    // promptly on shutdown. Join rather than detach so its last log
+    // line lands before main returns.
+    if (egress_thread.joinable()) egress_thread.join();
     if (hardware_connected) serial_close();
     std::puts("[SYSTEM] Ground Station shut down securely.");
     return 0;
