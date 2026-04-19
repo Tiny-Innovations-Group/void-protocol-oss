@@ -14,6 +14,7 @@ import (
 
 	"github.com/Tiny-Innovations-Group/void-protocol-oss/gateway/internal/api/handlers"
 	"github.com/Tiny-Innovations-Group/void-protocol-oss/gateway/internal/core/registry"
+	void_protocol "github.com/Tiny-Innovations-Group/void-protocol-oss/gateway/internal/void_protocol"
 	"github.com/gin-gonic/gin"
 )
 
@@ -28,9 +29,8 @@ import (
 // Packet B vector verifies green. This is a test-only shim; production
 // code never touches 0xCAFEBABE.
 const (
-	packetBBodyLen = 178
-	detTestSatID   = uint32(0xCAFEBABE)
-	detSeedHex     = "bc1df4fa6e3d7048992f14e655060cbb2190bded9002524c06e7cbb163df15fb"
+	detTestSatID = uint32(0xCAFEBABE)
+	detSeedHex   = "bc1df4fa6e3d7048992f14e655060cbb2190bded9002524c06e7cbb163df15fb"
 )
 
 func init() {
@@ -142,7 +142,7 @@ func TestIngestRejects177ByteShortBuffer(t *testing.T) {
 	registerTestPubKey(t)
 	r := newIngestRouter()
 
-	w := postIngest(t, r, make([]byte, packetBBodyLen-1))
+	w := postIngest(t, r, make([]byte, void_protocol.PacketBBodyLen-1))
 
 	if w.Code != http.StatusBadRequest {
 		body, _ := io.ReadAll(w.Body)
@@ -166,5 +166,92 @@ func TestIngestRejectsValidPacketBWithUnknownSat(t *testing.T) {
 
 	if w.Code == http.StatusOK {
 		t.Errorf("unknown sat Packet B: got 200, want non-2xx rejection")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// VOID-129 — Ed25519 signature verification gate, both tiers.
+// ---------------------------------------------------------------------------
+
+// Packet B body layout (178 B total, offsets within body):
+//
+//   00-01  _pad_head        ← sig-scope byte candidate (in-scope)
+//   02-09  epoch_ts
+//   10-33  pos_vec
+//   34-95  enc_payload      ← in-scope flip target (we use body offset 50)
+//   96-97  _pre_sat
+//   98-101 sat_id
+//   102-105 _pre_sig        ← end of VOID-111 sig scope (body[0..105])
+//   106-169 signature       ← flipped-sig target (we use body offset 110)
+//   170-173 global_crc      ← out-of-scope flip target (body offset 170)
+//   174-177 _tail_pad
+//
+// Absolute offsets add the tier header length: 6 (CCSDS) or 14 (SNLP).
+func flipByte(raw []byte, offset int) []byte {
+	mutated := append([]byte{}, raw...)
+	mutated[offset] ^= 0xFF
+	return mutated
+}
+
+// TestSigVerifyHandler — VOID-129: pin the signature gate behaviour across
+// both tiers. Four assertions per tier: valid → 200, flipped signature →
+// 400, flipped in-scope body byte → 400, flipped out-of-scope body byte
+// → 200 (documented exception — VOID-111 sig scope stops at body[105];
+// a future CRC gate would flip this to 400).
+//
+// Red-green: before VOID-129 the handler returned 401 on signature
+// failure. This test pins 400 per CLAUDE.md VOID-111/112 ("length check
+// first, cast second" — reject under-sized or signature-mismatched
+// frames with 400, not 401 — the frame is malformed input, not an
+// authorisation failure).
+func TestSigVerifyHandler(t *testing.T) {
+	registerTestPubKey(t)
+
+	// All offsets are ABSOLUTE into the raw frame (header + body).
+	const (
+		bodyOffInScope    = 50  // inside enc_payload region
+		bodyOffSignature  = 110 // inside the 64-byte signature
+		bodyOffOutOfScope = 170 // inside global_crc (past VOID-111 scope)
+	)
+
+	cases := []struct {
+		name       string
+		tier       string
+		headerLen  int
+		flipBody   int // body-relative offset, -1 if no flip
+		wantStatus int
+	}{
+		{"Valid_CCSDS", "ccsds", 6, -1, http.StatusOK},
+		{"Valid_SNLP", "snlp", 14, -1, http.StatusOK},
+
+		{"FlippedSig_CCSDS", "ccsds", 6, bodyOffSignature, http.StatusBadRequest},
+		{"FlippedSig_SNLP", "snlp", 14, bodyOffSignature, http.StatusBadRequest},
+
+		{"FlippedBodyInScope_CCSDS", "ccsds", 6, bodyOffInScope, http.StatusBadRequest},
+		{"FlippedBodyInScope_SNLP", "snlp", 14, bodyOffInScope, http.StatusBadRequest},
+
+		// Out-of-scope flip: VOID-111 sig only covers body[0..105]. A flip
+		// at body offset 170 (global_crc region) is invisible to the
+		// signature check. Returns 200 today — documented carve-out until
+		// a CRC gate lands as a follow-up ticket.
+		{"FlippedBodyOutOfScope_CCSDS", "ccsds", 6, bodyOffOutOfScope, http.StatusOK},
+		{"FlippedBodyOutOfScope_SNLP", "snlp", 14, bodyOffOutOfScope, http.StatusOK},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			r := newIngestRouter()
+			raw := loadGoldenPacketB(t, tc.tier)
+			payload := raw
+			if tc.flipBody >= 0 {
+				payload = flipByte(raw, tc.headerLen+tc.flipBody)
+			}
+			w := postIngest(t, r, payload)
+			if w.Code != tc.wantStatus {
+				body, _ := io.ReadAll(w.Body)
+				t.Errorf("%s: got %d, want %d. body=%s",
+					tc.name, w.Code, tc.wantStatus, string(body))
+			}
+		})
 	}
 }
