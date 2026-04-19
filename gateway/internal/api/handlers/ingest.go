@@ -79,24 +79,30 @@ func handlePayloadBody(body interface{}, rawData *[]byte, c *gin.Context, packet
 		//     critical field is naturally aligned, and _tail_pad[4] so frame
 		//     totals land at 184 (CCSDS ÷8) and 192 (SNLP ÷64 cache line).
 		// Signature still covers (header + body[0..105]) = 106 body bytes.
-		const packetBBodyLen = 178
-		const packetBSigScopeBody = 106 // body bytes covered by signature
-		if packetSize < packetBBodyLen {
-			log.Printf("⛔ REJECTED: Packet B too short for signature verification")
+		// Constants come from gateway/internal/void_protocol/constants.go —
+		// shared with tests and the deterministic vector generator.
+		if packetSize < void_protocol.PacketBBodyLen {
+			log.Printf("level=warn event=packetb.bounds_fail sat_id=%d packet_size=%d min=%d",
+				b.SatId, packetSize, void_protocol.PacketBBodyLen)
 			c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"error": "Packet too short for signature verification"})
 			return true // Return true because we successfully identified the type, even if it failed validation
 		}
 
-		// Signed region is (rawData header) + first 98 body bytes.
-		bodyStart := packetSize - packetBBodyLen
+		// Signed region is (rawData header) + first PacketBSigScopeBody body bytes.
+		bodyStart := packetSize - void_protocol.PacketBBodyLen
 		headerBytes := (*rawData)[0:bodyStart]
-		bodyPreSig := (*rawData)[bodyStart : bodyStart+packetBSigScopeBody]
+		bodyPreSig := (*rawData)[bodyStart : bodyStart+void_protocol.PacketBSigScopeBody]
 		messageBytes := append(append([]byte{}, headerBytes...), bodyPreSig...)
 
-		// FIX: Check err != nil instead of !bool
+		// VOID-129: Full Ed25519 verify over the VOID-111 scope. Signature
+		// failure returns HTTP 400 (malformed input — the frame failed its
+		// integrity contract) with a structured log line so the field
+		// operator can grep `event=packetb.sig_fail` out of the gateway
+		// log stream. Not 401: 401 would imply an auth challenge the
+		// sender could retry; a bad signature is a content defect.
 		if err := security.VerifyPacketSignature(b.SatId, messageBytes, b.Signature); err != nil {
-			log.Printf("⛔ REJECTED: %v", err) // Log the actual error from the verifier
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Invalid Cryptographic Signature"})
+			log.Printf("level=warn event=packetb.sig_fail sat_id=%d err=%q", b.SatId, err.Error())
+			c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"error": "Invalid Cryptographic Signature"})
 			return true // ⛔ BOUNCE THE HACKER
 		}
 		return true
