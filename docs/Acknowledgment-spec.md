@@ -74,6 +74,18 @@ SNLP header carried inside the encrypted tunnel payload.
 
 ---
 
+### A.2 CRC Pre-Validation Gate (VOID-122)
+
+Packet ACK carries **no Ed25519 signature** — the trailing `CRC32` is the only integrity gate on its in-body fields (`target_tx_id`, `status`, `relay_ops`, `enc_tunnel`). The ingest handler MUST verify the CRC before trusting any body field beyond the F-03 magic byte. Failing CRC rejects with HTTP 400 + structured log `level=warn event=packetack.crc_fail`.
+
+- **CRC field position:** last 4 bytes of the frame (`frame_size - 4`).
+- **CRC coverage:** `frame[0:frame_size - 4]` — header + every body byte that precedes the CRC.
+- **Hash:** IEEE 802.3 CRC32 (polynomial `0xEDB88320`, reflected), byte-identical to Go's `hash/crc32.ChecksumIEEE` and the C++ firmware's `VoidProtocol::calculateCRC`.
+
+This gate complements the F-03 magic byte (body offset 0 = `0xAC`) on the `dispatch_122` collision zone: F-03 catches a single RF bit-flip on the CCSDS type bit (Hamming distance 4 between `0xAC` and `0xD0`), and CRC catches every other in-scope byte flip.
+
+---
+
 ## B. Relay Ops 12 bytes (Sub-structure)
 
 Used by Sat B to orient transmission toward Sat A.
