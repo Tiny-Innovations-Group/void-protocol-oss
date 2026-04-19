@@ -1,0 +1,5 @@
+
+# VOID-135a: runtime-generated receipts log (kept under gateway/data/);
+# the dir itself is tracked via gateway/data/.gitkeep.
+data/receipts.json
+data/receipts.json.*
