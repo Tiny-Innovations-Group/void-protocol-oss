@@ -87,6 +87,15 @@ func main() {
 	v1 := router.Group("/api/v1")
 	{
 		v1.POST("/ingest", handlers.IngestPacket)
+
+		// VOID-135b: bouncer drains pending receipts here, TXes each
+		// PacketC via LoRa, then ACKs back. Routes always mount — if
+		// handlers.EgressStore is nil (on-chain pipeline disabled)
+		// the handlers return 503, so the bouncer gets a clear signal
+		// rather than a 404.
+		egress := v1.Group("/egress")
+		egress.GET("/pending", handlers.HandleEgressPending)
+		egress.POST("/ack", handlers.HandleEgressAck)
 	}
 
 	log.Println("🚀 VOID Enterprise Gateway listening on :8080")
@@ -181,6 +190,11 @@ func startReceiptWatcher(ctx context.Context, deps *chainDeps) error {
 	}
 	// Store lifetime matches the server; intentionally NOT closed
 	// here — the defer is set up by the caller's cleanup if needed.
+	//
+	// VOID-135b: expose the same store to the egress HTTP handlers so
+	// the bouncer's GET /api/v1/egress/pending + POST /ack surface the
+	// same PENDING/DISPATCHED state the watcher is populating.
+	handlers.EgressStore = store
 
 	seedHex := os.Getenv("VOID_RECEIPTS_SELLER_SEED")
 	if seedHex == "" {
