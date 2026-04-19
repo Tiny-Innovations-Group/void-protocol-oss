@@ -42,6 +42,7 @@ add_executable(ground_station
     src/egress_json.cpp
     src/egress_hex.cpp
     src/egress_poll_client.cpp
+    src/ack_builder.cpp
     ${CMAKE_SOURCE_DIR}/../void-core/src/security_manager.cpp
 )
 
@@ -101,9 +102,11 @@ set(GROUND_STATION_TEST_SOURCES
     test/test_egress_hex.cpp
     test/test_egress_poll_client.cpp
     test/test_egress_orchestrator.cpp
+    test/test_ack_builder.cpp
     src/egress_json.cpp
     src/egress_hex.cpp
     src/egress_poll_client.cpp
+    src/ack_builder.cpp
 )
 
 add_executable(ground_station_tests
@@ -125,6 +128,13 @@ target_compile_options(ground_station_tests PRIVATE
     -Wshadow
     -Wvla
     -O2
+)
+
+# VOID-134: the ack_builder regression loads the SNLP golden vector
+# from test/vectors/snlp/packet_ack.bin. The test target needs an
+# absolute path to that directory at compile time.
+target_compile_definitions(ground_station_tests PRIVATE
+    VOID_TEST_VECTORS_DIR="${CMAKE_SOURCE_DIR}/../test/vectors"
 )
 
 if(WIN32)

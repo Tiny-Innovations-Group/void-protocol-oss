@@ -22,6 +22,7 @@
 #include "gateway_client.h"
 #include "egress_poll_client.h"
 #include "egress_orchestrator.h"
+#include "ack_builder.h"
 
 // --- Global State ---
 // Stack-allocated modules (No Heap) as per .cursorrules
@@ -66,6 +67,45 @@ static bool lora_tx_via_serial(const uint8_t* data, size_t len, void* /*user*/) 
     const int n = serial_write_bytes(reinterpret_cast<const uint8_t*>(line),
                                      line_len + 1);
     return n >= 0;
+}
+
+// VOID-134: emit a 136-byte SNLP PacketAck frame as "PACKET_ACK_TX:<hex>\n"
+// so the firmware-side Heltec LoRa-transmits it back down to Sat B.
+// Mirrors the VOID-138 PACKET_C_TX: serial-line convention. Returns
+// true iff the serial write succeeded; radio-side TX failure is a
+// separate concern (no retry in alpha per the spec).
+static bool lora_tx_ack_via_serial(const uint8_t* data, size_t len) {
+    static constexpr char   kPrefix[]  = "PACKET_ACK_TX:";
+    static constexpr size_t kPrefixLen = sizeof(kPrefix) - 1;
+    static constexpr size_t kMaxHex    = ack_builder::kPacketAckSize * 2;
+    static constexpr size_t kLineCap   = kPrefixLen + kMaxHex + 2; // +\n +\0
+
+    if (len != ack_builder::kPacketAckSize) return false;
+
+    char line[kLineCap];
+    std::memcpy(line, kPrefix, kPrefixLen);
+    static const char kDigits[] = "0123456789abcdef";
+    for (size_t i = 0; i < len; ++i) {
+        line[kPrefixLen + i * 2]     = kDigits[(data[i] >> 4) & 0x0Fu];
+        line[kPrefixLen + i * 2 + 1] = kDigits[data[i] & 0x0Fu];
+    }
+    const size_t line_len = kPrefixLen + len * 2u;
+    line[line_len]     = '\n';
+    line[line_len + 1] = '\0';
+
+    const int n = serial_write_bytes(reinterpret_cast<const uint8_t*>(line),
+                                     line_len + 1);
+    return n >= 0;
+}
+
+// VOID-134: PacketB.sat_id lives at SNLP offset 112 as a little-endian
+// uint32 (see void_packets_snlp.h::PacketB_t). Pulling it by explicit
+// byte-shift avoids any misaligned-pointer cast and is endian-safe.
+static uint32_t extract_packet_b_sat_id_snlp(const uint8_t* pkt) {
+    return  static_cast<uint32_t>(pkt[112])
+         | (static_cast<uint32_t>(pkt[113]) <<  8)
+         | (static_cast<uint32_t>(pkt[114]) << 16)
+         | (static_cast<uint32_t>(pkt[115]) << 24);
 }
 
 // --- Helper: Hex to Binary (No Heap) ---
@@ -240,7 +280,30 @@ int main(int argc, char* argv[]) {
                             // Let the Bouncer validate the crypto & structural limits
                             if (edge_firewall.process_packet(packet_bin, sizeof(packet_bin), cleartext_out, sizeof(cleartext_out))) {
                                 std::puts("[BOUNCER] ✅ Signature Valid. Decryption Success.");
-                                
+
+                                // VOID-134: emit PacketAck on the downlink independently
+                                // of gateway delivery. Per Acknowledgement-spec, the ACK
+                                // confirms reception — gateway/L2 settlement is a later
+                                // phase and failing to reach L2 must not suppress it.
+                                // Fire-and-forget, no retry (alpha).
+                                ack_builder::AckInputs ack_in = {};
+                                ack_in.target_tx_id = extract_packet_b_sat_id_snlp(packet_bin);
+                                ack_in.status       = ack_builder::kAckStatusVerified;
+                                ack_in.azimuth      = 180;        // flat-sat fixed pointing
+                                ack_in.elevation    = 45;
+                                ack_in.frequency_hz = 437200000u; // 437.2 MHz ISM
+                                ack_in.duration_ms  = 5000u;
+                                // enc_tunnel left zero-filled: plaintext alpha has no
+                                // on-chain UNLOCK sig to carry (VOID-134 non-goal).
+
+                                uint8_t ack_frame[ack_builder::kPacketAckSize];
+                                if (ack_builder::build(ack_in, ack_frame, sizeof(ack_frame)) &&
+                                    lora_tx_ack_via_serial(ack_frame, sizeof(ack_frame))) {
+                                    std::puts("[ACK] ✅ PacketAck emitted over LoRa downlink.");
+                                } else {
+                                    std::puts("[ACK] ⚠️  PacketAck emit failed (non-fatal).");
+                                }
+
                                 // Push the LIVE hardware packet to the Go Gateway
                                 if (go_gateway.push_to_l2(cleartext_out, 62)) {
                                     std::puts("[GATEWAY] ✅ Live hardware payload delivered to Enterprise Gateway.");
