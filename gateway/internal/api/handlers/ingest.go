@@ -159,6 +159,14 @@ func handlePayloadBody(body interface{}, rawData *[]byte, c *gin.Context, packet
 				c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"error": "Packet D magic byte mismatch (F-03)"})
 				return true
 			}
+			// VOID-122: CRC-first — reject any bit-flip inside the CRC-
+			// covered region before we log or trust business fields.
+			crcOffset := packetSize - void_protocol.PacketDCrcOffsetFromEnd
+			if err := void_protocol.ValidateFrameCRC32(*rawData, crcOffset); err != nil {
+				log.Printf("level=warn event=packetd.crc_fail err=%q", err.Error())
+				c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"error": "Packet D CRC mismatch (VOID-122)"})
+				return true
+			}
 			log.Printf("   📦 DELIVERY (D)  | Mule SatID: %d | Downlink TS: %d",
 				inner.SatBId, inner.DownlinkTs)
 			return true
@@ -166,6 +174,14 @@ func handlePayloadBody(body interface{}, rawData *[]byte, c *gin.Context, packet
 			if magic != magicPacketAck {
 				log.Printf("⛔ REJECTED: Packet ACK (SNLP) magic mismatch: got 0x%02X, want 0x%02X", magic, magicPacketAck)
 				c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"error": "Packet ACK magic byte mismatch (F-03)"})
+				return true
+			}
+			// VOID-122: CRC-first — reject any bit-flip inside the CRC-
+			// covered region before we log or trust business fields.
+			crcOffset := packetSize - void_protocol.PacketAckCrcOffsetFromEnd
+			if err := void_protocol.ValidateFrameCRC32(*rawData, crcOffset); err != nil {
+				log.Printf("level=warn event=packetack.crc_fail err=%q", err.Error())
+				c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"error": "Packet ACK CRC mismatch (VOID-122)"})
 				return true
 			}
 			log.Printf("   ✅ COMMAND ACK   | Target TxID: %d | Status: %d | Freq: %d Hz",
@@ -187,6 +203,14 @@ func handlePayloadBody(body interface{}, rawData *[]byte, c *gin.Context, packet
 		if magic != magicPacketAck {
 			log.Printf("⛔ REJECTED: Packet ACK magic mismatch: got 0x%02X, want 0x%02X", magic, magicPacketAck)
 			c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"error": "Packet ACK magic byte mismatch (F-03)"})
+			return true
+		}
+		// VOID-122: CRC-first gate — same semantics as the SNLP path
+		// above, applied to the CCSDS-tier ACK routing.
+		crcOffset := packetSize - void_protocol.PacketAckCrcOffsetFromEnd
+		if err := void_protocol.ValidateFrameCRC32(*rawData, crcOffset); err != nil {
+			log.Printf("level=warn event=packetack.crc_fail err=%q", err.Error())
+			c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"error": "Packet ACK CRC mismatch (VOID-122)"})
 			return true
 		}
 		log.Printf("   ✅ COMMAND ACK   | Target TxID: %d | Status: %d | Freq: %d Hz",

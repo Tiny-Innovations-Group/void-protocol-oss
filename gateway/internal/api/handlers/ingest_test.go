@@ -86,7 +86,13 @@ func postIngest(t *testing.T, r *gin.Engine, payload []byte) *httptest.ResponseR
 
 func loadGoldenPacketB(t *testing.T, tier string) []byte {
 	t.Helper()
-	path := filepath.Join(repoVectorsDir(t), tier, "packet_b.bin")
+	return loadGoldenVector(t, tier, "packet_b.bin")
+}
+
+// loadGoldenVector reads test/vectors/<tier>/<name> for any packet type.
+func loadGoldenVector(t *testing.T, tier, name string) []byte {
+	t.Helper()
+	path := filepath.Join(repoVectorsDir(t), tier, name)
 	data, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatalf("read %s: %v", path, err)
@@ -245,6 +251,94 @@ func TestSigVerifyHandler(t *testing.T) {
 			payload := raw
 			if tc.flipBody >= 0 {
 				payload = flipByte(raw, tc.headerLen+tc.flipBody)
+			}
+			w := postIngest(t, r, payload)
+			if w.Code != tc.wantStatus {
+				body, _ := io.ReadAll(w.Body)
+				t.Errorf("%s: got %d, want %d. body=%s",
+					tc.name, w.Code, tc.wantStatus, string(body))
+			}
+		})
+	}
+}
+
+// ---------------------------------------------------------------------------
+// VOID-122 — CRC pre-validation gate for PacketD + PacketAck, both tiers.
+// ---------------------------------------------------------------------------
+//
+// Neither PacketD nor PacketAck carries an Ed25519 signature (unlike
+// PacketB), so the ONLY integrity gate on their in-body fields is the
+// trailing global CRC32. Without CRC-first, a single-bit flip outside
+// the type-bit + magic-byte region goes undetected until the business
+// logic trusts a wrong value. This suite pins: any byte flipped inside
+// the CRC-covered region MUST be rejected with HTTP 400 before any
+// field is trusted.
+//
+// CRC-field layout:
+//
+//	PacketD:   [..header + body before CRC..][CRC u32 LE (4)][_tail (6)]
+//	           CRC field at frame_size - 10. Tail NOT CRC-covered.
+//	PacketAck: [..header + body before CRC..][CRC u32 LE (4)]
+//	           CRC field at frame_size - 4. No tail.
+//
+// The tail-flip carve-out on PacketD is documented in Receipt-spec.md
+// Packet D section — _tail is frame-alignment filler, not integrity-
+// relevant, and deliberately outside CRC scope to match the wire format
+// the Go generator produces.
+func TestCRCPreValidation(t *testing.T) {
+	registerTestPubKey(t)
+
+	const (
+		// Frame sizes from void-core/include/void_packets.h.
+		sizePacketD_CCSDS   = 128
+		sizePacketD_SNLP    = 136
+		sizePacketAck_CCSDS = 120
+		sizePacketAck_SNLP  = 136
+	)
+
+	cases := []struct {
+		name       string
+		tier       string
+		vector     string
+		flipOffset int // absolute frame offset, -1 for no flip
+		wantStatus int
+	}{
+		// Happy paths — golden vectors carry valid CRCs.
+		{"PacketD_Valid_CCSDS", "ccsds", "packet_d.bin", -1, http.StatusOK},
+		{"PacketD_Valid_SNLP", "snlp", "packet_d.bin", -1, http.StatusOK},
+		{"PacketAck_Valid_CCSDS", "ccsds", "packet_ack.bin", -1, http.StatusOK},
+		{"PacketAck_Valid_SNLP", "snlp", "packet_ack.bin", -1, http.StatusOK},
+
+		// CRC-field flip: flip the first byte of the CRC u32 itself.
+		// Guaranteed mismatch — field no longer equals the computed CRC.
+		{"PacketD_FlipCRC_CCSDS", "ccsds", "packet_d.bin", sizePacketD_CCSDS - 10, http.StatusBadRequest},
+		{"PacketD_FlipCRC_SNLP", "snlp", "packet_d.bin", sizePacketD_SNLP - 10, http.StatusBadRequest},
+		{"PacketAck_FlipCRC_CCSDS", "ccsds", "packet_ack.bin", sizePacketAck_CCSDS - 4, http.StatusBadRequest},
+		{"PacketAck_FlipCRC_SNLP", "snlp", "packet_ack.bin", sizePacketAck_SNLP - 4, http.StatusBadRequest},
+
+		// In-scope body flip: absolute offset is inside the CRC-covered
+		// region. PacketD payload starts at body offset 14 (abs 20 CCSDS
+		// / 28 SNLP) — offset 50 is well inside. PacketAck enc_tunnel
+		// starts at body offset 20 (abs 26 / 34) — offset 40 is inside.
+		{"PacketD_FlipBodyInScope_CCSDS", "ccsds", "packet_d.bin", 50, http.StatusBadRequest},
+		{"PacketD_FlipBodyInScope_SNLP", "snlp", "packet_d.bin", 50, http.StatusBadRequest},
+		{"PacketAck_FlipBodyInScope_CCSDS", "ccsds", "packet_ack.bin", 40, http.StatusBadRequest},
+		{"PacketAck_FlipBodyInScope_SNLP", "snlp", "packet_ack.bin", 40, http.StatusBadRequest},
+
+		// Out-of-scope carve-out: PacketD _tail[6] is the trailing 6B
+		// after crc32 — NOT CRC-covered. Flip the 3rd tail byte; frame
+		// still passes.
+		{"PacketD_FlipTail_OutOfScope_CCSDS", "ccsds", "packet_d.bin", sizePacketD_CCSDS - 6 + 2, http.StatusOK},
+		{"PacketD_FlipTail_OutOfScope_SNLP", "snlp", "packet_d.bin", sizePacketD_SNLP - 6 + 2, http.StatusOK},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			r := newIngestRouter()
+			raw := loadGoldenVector(t, tc.tier, tc.vector)
+			payload := raw
+			if tc.flipOffset >= 0 {
+				payload = flipByte(raw, tc.flipOffset)
 			}
 			w := postIngest(t, r, payload)
 			if w.Code != tc.wantStatus {
