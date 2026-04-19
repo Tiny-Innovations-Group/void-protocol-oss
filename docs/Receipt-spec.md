@@ -109,6 +109,16 @@ Once the identity is verified, the Ground Station performs the final settlement 
 - **Status Update:** If the `tx_id` matches a pending transaction, that transaction is marked as **COMPLETED**.
 - **Fund Release:** The Ground Station triggers the final release of funds from the Escrow Smart Contract to Sat A’s wallet.
 
+### 4.3 CRC Pre-Validation Gate (VOID-122)
+
+Packet D carries **no Ed25519 signature on its outer envelope** (the inner PUF signature in §4.1 validates only the stripped `payload` blob). The outer `global_crc` is therefore the only integrity gate protecting the `downlink_ts`, `sat_b_id`, and `payload` framing. The ingest handler MUST verify this CRC before trusting any body field beyond the F-03 magic byte. Failing CRC rejects with HTTP 400 + structured log `level=warn event=packetd.crc_fail`.
+
+- **CRC field position:** 10 bytes from end of frame (`frame_size - 10`) — the trailing 6 bytes are `_tail` (frame-alignment filler, VOID-114B).
+- **CRC coverage:** `frame[0:frame_size - 10]` — header + every body byte up to but not including `global_crc`. `_tail` is **deliberately outside** CRC scope; a flip inside `_tail` is invisible to this gate by design (it's padding).
+- **Hash:** IEEE 802.3 CRC32 (polynomial `0xEDB88320`, reflected), byte-identical to Go's `hash/crc32.ChecksumIEEE` and the C++ firmware's `VoidProtocol::calculateCRC`.
+
+This gate complements the F-03 magic byte (body offset 0 = `0xD0`) in the `dispatch_122` collision zone: F-03 catches RF flips on the CCSDS type bit (Hamming distance 4 between `0xD0` and `0xAC`), CRC catches every other in-scope byte flip.
+
 ---
 
 ## 5. Implementation Logic (Mule Deduplication)
