@@ -42,7 +42,9 @@ set(VOID_TEST_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/test/test_offsets.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/test/test_golden_vectors.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/test/test_sign_verify.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/test/test_packet_d_builder.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../void-core/src/security_manager.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../void-core/src/packet_d_builder.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../ground-station/src/bouncer.cpp
 )
 
