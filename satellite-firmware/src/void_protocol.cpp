@@ -18,12 +18,13 @@ void VoidProtocol::begin()
 {
     // 1. Init Serial
     Serial.begin(115200);
-    while (!Serial)
-        ;
+    while (!Serial);
 
     // 2. Init Display
     pinMode(OLED_RST, OUTPUT);
     digitalWrite(OLED_RST, LOW);
+    pinMode(VEXT_CTRL, OUTPUT);                                                     
+    digitalWrite(VEXT_CTRL, LOW);   
     delay(20);
     digitalWrite(OLED_RST, HIGH);
     display.init();
@@ -76,8 +77,8 @@ void VoidProtocol::begin()
             ;
     }
 
-    // Set Output Power to +22 dBm (Heltec V3 limit)
-    radio.setOutputPower(22);
+    // Set Output Power to +22 dBm (Heltec V3 limit) legal limit for UK is 14dBm
+    radio.setOutputPower(10);
 
     updateDisplay("READY", "Void v2.1");
 }

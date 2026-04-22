@@ -201,7 +201,9 @@ void runBuyerLoop() {
             // 2b. Outer mule fields (LE).
             GpsStub.update();
             packet_b.epoch_ts = GpsStub.getEpochMs();
-            GpsStub.getPositionVec(packet_b.pos_vec);
+            double pos_tmp[3];
+            GpsStub.getPositionVec(pos_tmp);
+            memcpy(packet_b.pos_vec, pos_tmp, sizeof(pos_tmp));
 
             // 2c. Inner Invoice Payload — verbatim echo of the received
             // PacketA body fields (Protocol-spec-SNLP.md §4.3).

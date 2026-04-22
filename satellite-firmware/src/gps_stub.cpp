@@ -57,7 +57,7 @@ static void geodeticToEcef(double lat_deg, double lon_deg, double alt_m,
 // Simulated launch from Elsworth, Cambridgeshire, UK (52.24 N, -0.02 E).
 // Ascent ~5 m/s to 30 km, burst, descent ~5 m/s.  Total ~160 min.
 // Wind drift: gentle NE push.  11 waypoints, linearly interpolated.
-static const GeoWaypoint kTrajectory[] = {
+static constexpr GeoWaypoint kTrajectory[] = {
     //  t(s)   lat       lon       alt(m)
     {     0, 52.2400, -0.0200,     50.0 },  // Launch (ground)
     {   600, 52.2420, -0.0100,   3050.0 },  // 10 min — climbing
@@ -91,7 +91,7 @@ static_assert(kTrajectory[10].alt_m < 200.0,
               "Landing waypoint must be below 200m ASL");
 
 // ── Linear interpolation between two waypoints ─────────────────────
-static double lerp(double a, double b, double t) {
+static double linearInterp(double a, double b, double t) {
     return a + (b - a) * t;
 }
 
@@ -102,9 +102,9 @@ static void interpolateWaypoint(const GeoWaypoint& a, const GeoWaypoint& b,
                         ? static_cast<double>(t_sec - a.t_sec) / span
                         : 0.0;
 
-    const double lat = lerp(a.lat_deg, b.lat_deg, frac);
-    const double lon = lerp(a.lon_deg, b.lon_deg, frac);
-    const double alt = lerp(a.alt_m,   b.alt_m,   frac);
+    const double lat = linearInterp(a.lat_deg, b.lat_deg, frac);
+    const double lon = linearInterp(a.lon_deg, b.lon_deg, frac);
+    const double alt = linearInterp(a.alt_m,   b.alt_m,   frac);
 
     geodeticToEcef(lat, lon, alt, out);
 }

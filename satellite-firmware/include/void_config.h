@@ -22,6 +22,7 @@
 #define OLED_SCL        18
 #define OLED_RST        21
 #define OLED_ADDR       0x3C
+#define VEXT_CTRL       36   
 
 // LoRa Config (EU868)
 #define LORA_FREQ       868.0

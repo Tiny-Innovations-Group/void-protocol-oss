@@ -17,7 +17,7 @@
 #include <cstring>
 
 #ifdef VOID_ALPHA_PLAINTEXT
-#warning "VOID-127: ALPHA PLAINTEXT BUILD — ChaCha20 encryption DISABLED. DO NOT ship to production."
+// #warning "VOID-127: ALPHA PLAINTEXT BUILD — ChaCha20 encryption DISABLED. DO NOT ship to production."
 #endif
 
 SecurityManager Security;
