@@ -78,7 +78,7 @@ void VoidProtocol::begin()
     }
 
     // Set Output Power to +22 dBm (Heltec V3 limit) legal limit for UK is 14dBm
-    radio.setOutputPower(10);
+    radio.setOutputPower(5);
 
     updateDisplay("READY", "Void v2.1");
 }

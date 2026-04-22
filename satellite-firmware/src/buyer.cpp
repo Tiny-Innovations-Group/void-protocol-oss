@@ -167,10 +167,27 @@ void runBuyerLoop() {
             Serial.readBytesUntil('\n', serial_buf, sizeof(serial_buf) - 1);
         serial_buf[bytesRead] = '\0';
 
+        // TODO: look into using (strncmp(serial_buf, "ACK_BUY", 7) == 0) for all command parsing to avoid the single-char command edge case. 
+        // This would also allow us to add more commands without worrying about the "H" vs "HANDSHAKE_ACK" overlap.
+        // -----------------------------------------------------------------
+        // Ground triggered a handshake (single-char 'H'/'h' command).
+        // -----------------------------------------------------------------
+        if (bytesRead == 1 && (serial_buf[0] == 'H' || serial_buf[0] == 'h')) {
+            Void.updateDisplay("AUTH", "Generating Keys...");
+
+            static PacketH_t handshake_pkt;
+            Security.prepareHandshake(
+                handshake_pkt, VOID_SESSION_TTL_DEF, millis());
+
+            Serial.print("HANDSHAKE_TX:");
+            Void.hexDump(
+                reinterpret_cast<uint8_t*>(&handshake_pkt), SIZE_PACKET_H);
+            Void.updateDisplay("AUTH", "Handshake Sent");
+        }
         // -----------------------------------------------------------------
         // Ground authorised the buy -> build & TX PacketB
         // -----------------------------------------------------------------
-        if (strncmp(serial_buf, "ACK_BUY", 7) == 0 && invoice_pending) {
+        else if (strncmp(serial_buf, "ACK_BUY", 7) == 0 && invoice_pending) {
             // --- Duty-cycle observation (non-blocking) ---
             if (last_tx_ms != 0) {
                 const unsigned long now = millis();

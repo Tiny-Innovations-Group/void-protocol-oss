@@ -47,9 +47,5 @@ void loop()
     runSellerLoop();
 #elif defined(ROLE_BUYER)
     runBuyerLoop();
-#ifdef DEMO
-    Void.pollDemoTriggers();
-#endif
-
 #endif
 }

@@ -212,8 +212,8 @@ void cli_listener() {
 
             if (std::strcmp(input, "h") == 0) {
                 std::puts("[CLI] Triggering Handshake via USB...");
-                const char* cmd = "H";
-                serial_write_bytes(reinterpret_cast<const uint8_t*>(cmd), 1);
+                const char* cmd = "H\n";
+                serial_write_bytes(reinterpret_cast<const uint8_t*>(cmd), std::strlen(cmd));
             } 
             else if (std::strcmp(input, "ack") == 0) {
                 std::puts("[CLI] Authorizing Buy...");

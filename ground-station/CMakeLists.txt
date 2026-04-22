@@ -35,7 +35,7 @@ FetchContent_MakeAvailable(googletest)
 
 # --- 4. PRODUCTION EXECUTABLE ---
 add_executable(ground_station
-    src/main_new.cpp
+    src/main.cpp
     src/bouncer.cpp
     src/serial_hal.cpp
     src/gateway_client.cpp
