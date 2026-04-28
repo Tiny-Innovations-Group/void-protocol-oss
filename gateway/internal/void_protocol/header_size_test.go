@@ -5,7 +5,7 @@ import (
 	"encoding/binary"
 	"testing"
 
-	void_protocol "github.com/Tiny-Innovations-Group/void-protocol-oss/gateway/internal/void_protocol"
+	"github.com/Tiny-Innovations-Group/void-protocol-oss/gateway/internal/void_protocol/protocol"
 )
 
 // VOID-113: SNLP header is exactly 14 bytes, CCSDS header is exactly 6
@@ -28,18 +28,18 @@ func TestCcsdsHeaderLength(t *testing.T) {
 		t.Fatalf("ccsds/packet_l.bin parsed as SNLP")
 	}
 
-	hdr, ok := p.RoutingHeader.(*void_protocol.VoidProtocol_HeaderCcsds)
+	hdr, ok := p.RoutingHeader.(*protocol.CcsdsPrimaryHeader)
 	if !ok {
-		t.Fatalf("expected *VoidProtocol_HeaderCcsds, got %T", p.RoutingHeader)
+		t.Fatalf("expected *CcsdsPrimaryHeader, got %T", p.RoutingHeader)
 	}
 
 	// CCSDS header is three big-endian u16s: 6 bytes total.
 	// We can't ask kaitai for the raw header length, so verify
 	// structurally: the three u16 fields must be populated AND the
 	// total frame (40 B) minus the body (34 B) equals 6.
-	_ = hdr.VersionTypeSecApid
+	_ = hdr.VersionTypeFlagApid
 	_ = hdr.SeqFlagsCount
-	_ = hdr.PacketLength
+	_ = hdr.PacketDataLength
 	const expectedBodyLen = 34 // heartbeat / packet L body
 	if got := len(raw) - expectedBodyLen; got != 6 {
 		t.Errorf("CCSDS header length derived from raw frame = %d, want 6", got)
@@ -61,9 +61,9 @@ func TestSnlpHeaderLength(t *testing.T) {
 		t.Fatalf("snlp/packet_l.bin did not parse as SNLP")
 	}
 
-	hdr, ok := p.RoutingHeader.(*void_protocol.VoidProtocol_HeaderSnlp)
+	hdr, ok := p.RoutingHeader.(*protocol.SnlpHeader)
 	if !ok {
-		t.Fatalf("expected *VoidProtocol_HeaderSnlp, got %T", p.RoutingHeader)
+		t.Fatalf("expected *SnlpHeader, got %T", p.RoutingHeader)
 	}
 
 	// Sync word is the first 4 big-endian bytes on the wire.
@@ -83,9 +83,10 @@ func TestSnlpHeaderLength(t *testing.T) {
 	if got := len(raw) - expectedBodyLen; got != 14 {
 		t.Errorf("SNLP header length derived from raw frame = %d, want 14", got)
 	}
-	if got := len(hdr.AlignPad); got != 4 {
-		t.Errorf("SNLP align pad length = %d, want 4", got)
-	}
+	// AlignPad is parsed as a uint32 (always 4 bytes by Go's type system).
+	// The KSY pins this at 4 bytes; the previous []byte-length runtime
+	// check is now a compile-time guarantee.
+	_ = hdr.AlignPad
 }
 
 // TestHeaderDeltaForFixedBodyVectors — for every committed packet type

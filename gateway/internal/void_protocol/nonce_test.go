@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	void_protocol "github.com/Tiny-Innovations-Group/void-protocol-oss/gateway/internal/void_protocol"
+	"github.com/Tiny-Innovations-Group/void-protocol-oss/gateway/internal/void_protocol/protocol"
 )
 
 // deriveChaCha20Nonce implements the VOID-110 nonce rule:
@@ -79,7 +79,7 @@ func TestNonceMatchesGoldenVectorFields(t *testing.T) {
 			raw := readVector(t, tier, "packet_b.bin")
 			p := parseVector(t, raw)
 
-			body, ok := p.Body.(*void_protocol.VoidProtocol_PacketBBody)
+			body, ok := p.Body.(*protocol.VoidProtocol_PacketBBody)
 			if !ok {
 				t.Fatalf("expected *VoidProtocol_PacketBBody, got %T", p.Body)
 			}
@@ -99,7 +99,7 @@ func TestNonceMatchesGoldenVectorFields(t *testing.T) {
 // VoidProtocol_PacketBBody may contain the substring "nonce" (case-
 // insensitive). If someone ever adds one back, this fails loud.
 func TestPacketBBodyHasNoWireNonceField(t *testing.T) {
-	typ := reflect.TypeOf(void_protocol.VoidProtocol_PacketBBody{})
+	typ := reflect.TypeOf(protocol.VoidProtocol_PacketBBody{})
 	for i := 0; i < typ.NumField(); i++ {
 		name := typ.Field(i).Name
 		if strings.Contains(strings.ToLower(name), "nonce") {

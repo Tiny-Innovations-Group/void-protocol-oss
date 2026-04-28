@@ -13,6 +13,7 @@ import (
 	"github.com/Tiny-Innovations-Group/void-protocol-oss/gateway/internal/core/registry"
 	"github.com/Tiny-Innovations-Group/void-protocol-oss/gateway/internal/core/security"
 	void_protocol "github.com/Tiny-Innovations-Group/void-protocol-oss/gateway/internal/void_protocol"
+	"github.com/Tiny-Innovations-Group/void-protocol-oss/gateway/internal/void_protocol/protocol"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/gin-gonic/gin"
 	"github.com/kaitai-io/kaitai_struct_go_runtime/kaitai"
@@ -61,7 +62,7 @@ const (
 //	48-55 amount    (u64 LE — extracted below)
 //	56-57 asset_id  (u16 LE — extracted below)
 //	58-61 crc32     (ignored — invoice's own CRC, not relevant to settle)
-func enqueueSettlementIntent(b *void_protocol.VoidProtocol_PacketBBody) {
+func enqueueSettlementIntent(b *protocol.VoidProtocol_PacketBBody) {
 	const innerLen = 62
 	if len(b.EncPayload) != innerLen {
 		log.Printf("level=warn event=packetb.enqueue_skip reason=inner_payload_len len=%d want=%d",
@@ -116,7 +117,7 @@ func bodyOffsetZero(raw []byte, isSnlp bool) (byte, bool) {
 // We pass rawData as a pointer to the slice to avoid unnecessary copying, though slices are already descriptors.
 func handlePayloadBody(body interface{}, rawData *[]byte, c *gin.Context, packetSize int, isSnlp bool) bool {
 	switch b := body.(type) {
-	case *void_protocol.VoidProtocol_HeartbeatBody:
+	case *protocol.VoidProtocol_HeartbeatBody:
 		lat := float64(b.LatFixed) / 10000000.0
 		lon := float64(b.LonFixed) / 10000000.0
 		temp := float64(b.TempC) / 100.0
@@ -124,14 +125,14 @@ func handlePayloadBody(body interface{}, rawData *[]byte, c *gin.Context, packet
 			temp, b.VbattMv, lat, lon, b.GpsSpeedCms)
 		return true
 
-	case *void_protocol.VoidProtocol_PacketABody:
+	case *protocol.VoidProtocol_PacketABody:
 		log.Printf("   🧾 INVOICE (A)   | Seller SatID: %d | Amount: %d | Asset ID: %d",
 			b.SatId, b.Amount, b.AssetId)
 		return true
 
-	case *void_protocol.VoidProtocol_PacketBBody:
+	case *protocol.VoidProtocol_PacketBBody:
 		log.Printf("   💰 PAYMENT (B)   | Buyer SatID: %d | EpochTs: %d | Sig Length: %d bytes",
-			b.SatId, b.EpochTs, len(b.Signature))
+			b.SatId, b.EpochTs, len(b.Signature.Raw))
 
 		// VOID-127: When VOID_ALPHA_PLAINTEXT=1, enc_payload carries cleartext
 		// (no ChaCha20 decryption needed). Ed25519 signature verification below
@@ -164,7 +165,7 @@ func handlePayloadBody(body interface{}, rawData *[]byte, c *gin.Context, packet
 		// operator can grep `event=packetb.sig_fail` out of the gateway
 		// log stream. Not 401: 401 would imply an auth challenge the
 		// sender could retry; a bad signature is a content defect.
-		if err := security.VerifyPacketSignature(b.SatId, messageBytes, b.Signature); err != nil {
+		if err := security.VerifyPacketSignature(b.SatId, messageBytes, b.Signature.Raw); err != nil {
 			log.Printf("level=warn event=packetb.sig_fail sat_id=%d err=%q", b.SatId, err.Error())
 			c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"error": "Invalid Cryptographic Signature"})
 			return true // ⛔ BOUNCE THE HACKER
@@ -178,7 +179,7 @@ func handlePayloadBody(body interface{}, rawData *[]byte, c *gin.Context, packet
 		}
 		return true
 
-	case *void_protocol.VoidProtocol_PacketCBody:
+	case *protocol.VoidProtocol_PacketCBody:
 		log.Printf("   📜 RECEIPT (C)   | ExecTime: %d | TxID (Encrypted): %d | Status: %d",
 			b.ExecTime, b.EncTxId, b.EncStatus)
 
@@ -196,7 +197,7 @@ func handlePayloadBody(body interface{}, rawData *[]byte, c *gin.Context, packet
 		messageBytes := (*rawData)[payloadStart : payloadStart+26]
 
 		// FIX: Check err != nil instead of !bool
-		if err := security.VerifyPacketSignature(sellerSatID, messageBytes, b.Signature); err != nil {
+		if err := security.VerifyPacketSignature(sellerSatID, messageBytes, b.Signature.Raw); err != nil {
 			log.Printf("⛔ REJECTED: %v", err) // Log the actual error from the verifier
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Invalid Cryptographic Signature"})
 			return true // ⛔ BOUNCE THE HACKER
@@ -204,12 +205,12 @@ func handlePayloadBody(body interface{}, rawData *[]byte, c *gin.Context, packet
 
 		return true
 
-	case *void_protocol.VoidProtocol_PacketHBody:
+	case *protocol.VoidProtocol_PacketHBody:
 		log.Printf("   🤝 HANDSHAKE (H) | TTL: %d sec | Timestamp: %d",
 			b.SessionTtl, b.Timestamp)
 		return true
 
-	case *void_protocol.VoidProtocol_Dispatch122:
+	case *protocol.VoidProtocol_Dispatch122:
 		// F-03: body offset 0 MUST carry the packet-type magic byte.
 		// The magic is our defence against the dispatch_122 single-bit-
 		// flip collision between Packet D and Packet ACK. The currently
@@ -224,7 +225,7 @@ func handlePayloadBody(body interface{}, rawData *[]byte, c *gin.Context, packet
 			return true
 		}
 		switch inner := b.Content.(type) {
-		case *void_protocol.VoidProtocol_PacketDBody:
+		case *protocol.VoidProtocol_PacketDBody:
 			if magic != magicPacketD {
 				log.Printf("⛔ REJECTED: Packet D magic mismatch: got 0x%02X, want 0x%02X", magic, magicPacketD)
 				c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"error": "Packet D magic byte mismatch (F-03)"})
@@ -241,7 +242,7 @@ func handlePayloadBody(body interface{}, rawData *[]byte, c *gin.Context, packet
 			log.Printf("   📦 DELIVERY (D)  | Mule SatID: %d | Downlink TS: %d",
 				inner.SatBId, inner.DownlinkTs)
 			return true
-		case *void_protocol.VoidProtocol_PacketAckBody:
+		case *protocol.VoidProtocol_PacketAckBodySnlp:
 			if magic != magicPacketAck {
 				log.Printf("⛔ REJECTED: Packet ACK (SNLP) magic mismatch: got 0x%02X, want 0x%02X", magic, magicPacketAck)
 				c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"error": "Packet ACK magic byte mismatch (F-03)"})
@@ -261,7 +262,7 @@ func handlePayloadBody(body interface{}, rawData *[]byte, c *gin.Context, packet
 		}
 		return false
 
-	case *void_protocol.VoidProtocol_PacketAckBody:
+	case *protocol.VoidProtocol_PacketAckBodyCcsds:
 		// F-03: CCSDS ACK (body 114B) is routed at the root, not via
 		// dispatch_122. Magic-byte check still applies — body offset 0
 		// must be 0xAC.
@@ -303,7 +304,7 @@ func IngestPacket(c *gin.Context) {
 
 	// 2. Pass the raw bytes into the Kaitai Parser
 	stream := kaitai.NewStream(bytes.NewReader(rawData))
-	packet := void_protocol.NewVoidProtocol()
+	packet := protocol.NewVoidProtocol()
 	err = packet.Read(stream, nil, packet)
 
 	if err != nil {
@@ -320,9 +321,9 @@ func IngestPacket(c *gin.Context) {
 	// Kaitai `valid:` cannot enforce this on computed instances; enforced here.
 	var ccsdsVersion int
 	if isSnlp {
-		ccsdsVersion, _ = packet.RoutingHeader.(*void_protocol.VoidProtocol_HeaderSnlp).Ccsds.Version()
+		ccsdsVersion, _ = packet.RoutingHeader.(*protocol.SnlpHeader).Ccsds.Version()
 	} else {
-		ccsdsVersion, _ = packet.RoutingHeader.(*void_protocol.VoidProtocol_HeaderCcsds).Version()
+		ccsdsVersion, _ = packet.RoutingHeader.(*protocol.CcsdsPrimaryHeader).Version()
 	}
 	if ccsdsVersion != 0 {
 		log.Printf("⛔ BOUNCE: Unknown CCSDS version %d — only Version 1 (0b000) accepted", ccsdsVersion)

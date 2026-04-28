@@ -5,7 +5,7 @@ import (
 	"encoding/hex"
 	"testing"
 
-	void_protocol "github.com/Tiny-Innovations-Group/void-protocol-oss/gateway/internal/void_protocol"
+	"github.com/Tiny-Innovations-Group/void-protocol-oss/gateway/internal/void_protocol/protocol"
 )
 
 // VOID-111: the Ed25519 signature on Packet B covers (routing_header +
@@ -58,11 +58,11 @@ func TestPacketBSignatureParityAcrossTiers(t *testing.T) {
 			raw := readVector(t, c.tier, "packet_b.bin")
 			p := parseVector(t, raw)
 
-			body, ok := p.Body.(*void_protocol.VoidProtocol_PacketBBody)
+			body, ok := p.Body.(*protocol.VoidProtocol_PacketBBody)
 			if !ok {
 				t.Fatalf("expected *VoidProtocol_PacketBBody, got %T", p.Body)
 			}
-			if got := len(body.Signature); got != ed25519.SignatureSize {
+			if got := len(body.Signature.Raw); got != ed25519.SignatureSize {
 				t.Fatalf("signature length %d, want %d", got, ed25519.SignatureSize)
 			}
 
@@ -76,7 +76,7 @@ func TestPacketBSignatureParityAcrossTiers(t *testing.T) {
 			}
 			sigScope := raw[:sigScopeEnd]
 
-			if !ed25519.Verify(pub, sigScope, body.Signature) {
+			if !ed25519.Verify(pub, sigScope, body.Signature.Raw) {
 				t.Errorf("%s Packet B signature failed to verify against deterministic test pubkey", c.tier)
 			}
 		})

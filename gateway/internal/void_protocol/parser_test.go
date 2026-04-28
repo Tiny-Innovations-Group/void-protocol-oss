@@ -7,7 +7,7 @@ import (
 	"runtime"
 	"testing"
 
-	void_protocol "github.com/Tiny-Innovations-Group/void-protocol-oss/gateway/internal/void_protocol"
+	"github.com/Tiny-Innovations-Group/void-protocol-oss/gateway/internal/void_protocol/protocol"
 	"github.com/kaitai-io/kaitai_struct_go_runtime/kaitai"
 )
 
@@ -53,10 +53,10 @@ func readVector(t *testing.T, tier, file string) []byte {
 	return data
 }
 
-func parseVector(t *testing.T, raw []byte) *void_protocol.VoidProtocol {
+func parseVector(t *testing.T, raw []byte) *protocol.VoidProtocol {
 	t.Helper()
 	stream := kaitai.NewStream(bytes.NewReader(raw))
-	p := void_protocol.NewVoidProtocol()
+	p := protocol.NewVoidProtocol()
 	if err := p.Read(stream, nil, p); err != nil {
 		t.Fatalf("kaitai parse failed: %v", err)
 	}
