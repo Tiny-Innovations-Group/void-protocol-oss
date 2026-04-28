@@ -272,7 +272,7 @@ int main(int argc, char* argv[]) {
                         if (std::strncmp(line_buf, "PACKET_B:", 9) == 0) {
                             std::puts("\n[HARDWARE] 📦 Received PACKET B from Sat B. Routing to Bouncer...");
                             
-                            uint8_t packet_bin[176]; 
+                            uint8_t packet_bin[SIZE_PACKET_B]; 
                             uint8_t cleartext_out[256];
                             
                             hex_to_bin(&line_buf[9], packet_bin, sizeof(packet_bin));
@@ -306,7 +306,7 @@ int main(int argc, char* argv[]) {
 
                                 // Push the LIVE hardware packet to the Go Gateway
                                 if (go_gateway.push_to_l2(cleartext_out, 62)) {
-                                    std::puts("[GATEWAY] ✅ Live hardware payload delivered to Enterprise Gateway.");
+                                    std::puts("[GATEWAY] ✅ Live hardware payload delivered to Gateway.");
                                 } else {
                                     std::puts("[GATEWAY] ❌ Failed to reach Go Gateway.");
                                 }
