@@ -4,6 +4,7 @@ project(VoidGroundStation VERSION 2.1.1 LANGUAGES CXX C)
 
 # --- 1. COMPILER STANDARD ---
 # Force C++14 to maintain perfect parity with the ESP32 PlatformIO environment
+# TODO: bump to C++17 post-demo — if constexpr, [[nodiscard]], string_view all useful here
 set(CMAKE_CXX_STANDARD 14)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF) # Disable GNU extensions for strict portability

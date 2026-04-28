@@ -19,9 +19,55 @@
 
 static PacketA_t invoice;
 
+// --- RX ISR flag (DIO1 packet-received interrupt) ---
+// Replaces the earlier readData(NULL, 0) poll that crashed the SX126x
+// SPI path with a NULL-pointer StoreProhibited. Canonical RadioLib
+// pattern: ISR sets the flag, loop drains it with a sized read.
+static volatile bool rx_flag = false;
+static void IRAM_ATTR onRxDone() { rx_flag = true; }
+
 // Helper to extract APID safely
 static uint16_t getAPID(const uint8_t* buf) {
     return static_cast<uint16_t>(((buf[0] & 0x07) << 8) | buf[1]);
+}
+
+// Pack a VOID header (BE) for a non-command telemetry packet into the
+// supplied byte buffer. `body_len` is the full frame size minus
+// SIZE_VOID_HEADER. The CCSDS packet_len field is encoded as
+// (body_len - 1) to match gateway/test/utils/generate_packets.go::
+// buildHeader — the authority for the golden vector bytes.
+// Mirrors buyer.cpp so seller TX stays byte-compatible with the buyer
+// parser and the checked-in golden vectors.
+static void packVoidHeader(uint8_t* hdr, uint16_t apid, uint16_t body_len) {
+#if VOID_PROTOCOL_TYPE == 2
+    // Sync word 0x1D01A5A5 (BE32)
+    hdr[0] = 0x1Du; hdr[1] = 0x01u; hdr[2] = 0xA5u; hdr[3] = 0xA5u;
+    uint8_t* const ccsds = hdr + 4;
+#else
+    uint8_t* const ccsds = hdr;
+#endif
+
+    // CCSDS ID field: version=0 | type=0 (telemetry) | sec=1 | apid(11)
+    const uint16_t id = static_cast<uint16_t>(0x0800u | (apid & 0x07FFu));
+    ccsds[0] = static_cast<uint8_t>((id >> 8) & 0xFFu);
+    ccsds[1] = static_cast<uint8_t>(id & 0xFFu);
+
+    // Sequence: flags=11 (unsegmented continuous), count=0
+    ccsds[2] = 0xC0u;
+    ccsds[3] = 0x00u;
+
+    // packet_len = body_len - 1 (BE16)
+    const uint16_t plen = static_cast<uint16_t>(body_len - 1u);
+    ccsds[4] = static_cast<uint8_t>((plen >> 8) & 0xFFu);
+    ccsds[5] = static_cast<uint8_t>(plen & 0xFFu);
+
+#if VOID_PROTOCOL_TYPE == 2
+    // SNLP 4-byte align_pad (zeroed)
+    hdr[10] = 0x00u;
+    hdr[11] = 0x00u;
+    hdr[12] = 0x00u;
+    hdr[13] = 0x00u;
+#endif
 }
 
 #if VOID_PROTOCOL_TYPE == 2
@@ -76,7 +122,17 @@ static void handlePacketCReceipt(const uint8_t* buf, size_t len) {
 
 void runSellerLoop() {
     static unsigned long lastTx = 0;
-    
+    static uint8_t rx_buffer[VOID_MAX_PACKET_SIZE];
+
+    // One-shot ISR arm: register DIO1 packet-received callback and put
+    // the radio into continuous RX on first entry.
+    static bool radio_armed = false;
+    if (!radio_armed) {
+        Void.radio.setDio1Action(onRxDone);
+        Void.radio.startReceive();
+        radio_armed = true;
+    }
+
     // ---------------------------------------------------------
     // 1. BROADCAST ADVERTISING (Phase 3)
     // ---------------------------------------------------------
@@ -84,25 +140,32 @@ void runSellerLoop() {
         // Clear memory to prevent leaking RAM garbage
         memset(&invoice, 0, sizeof(PacketA_t));
 
-        // Header (Big Endian)
-        invoice.header.ver_type_sec = 0x18; 
-        invoice.header.apid_lo = 0xA1;
-        invoice.header.seq_flags = 0xC0;
-        invoice.header.seq_count_lo = 0x00;
-        
-        uint16_t raw_len = SIZE_PACKET_A - 1;
-        // Wrap the math in static_cast
-        invoice.header.packet_len = static_cast<uint16_t>((raw_len >> 8) | (raw_len << 8));
+        // 1. Wire header (BE) — byte-packed via canonical helper so the
+        //    seller's PacketA matches the buyer's parser and the Go
+        //    golden vector byte-for-byte (sync word, APID, packet_len).
+        uint8_t hdr_bytes[SIZE_VOID_HEADER];
+        packVoidHeader(
+            hdr_bytes,
+            SELLER_APID,
+            static_cast<uint16_t>(SIZE_PACKET_A - SIZE_VOID_HEADER));
+        memcpy(&invoice.header, hdr_bytes, SIZE_VOID_HEADER);
 
-        // Payload (Little Endian)
-        invoice.sat_id = 0xAAAAAAAA;
-        invoice.amount = 500;
-        invoice.asset_id = 1;
+        // 2. Payload (Little Endian)
         invoice.epoch_ts = millis();
-        invoice.crc32 = Void.calculateCRC(reinterpret_cast<const uint8_t*>(&invoice), SIZE_PACKET_A - 4);
+        invoice.sat_id   = SELLER_SAT_ID;   // 0xCAFEBABE (canonical alpha ID)
+        invoice.amount   = 500;
+        invoice.asset_id = 1;
 
-        // Transmit using strictly typed reinterpret_cast
+        // 3. CRC32 covers [0 .. crc32 offset)
+        invoice.crc32 = Void.calculateCRC(
+            reinterpret_cast<const uint8_t*>(&invoice),
+            offsetof(PacketA_t, crc32));
+
+        // 4. Transmit
         Void.radio.transmit(reinterpret_cast<uint8_t*>(&invoice), SIZE_PACKET_A);
+        Serial.println("SELLER: Broadcasted Invoice (PacketA)");
+        Serial.print("INVOICE_TX:");
+        Void.hexDump(reinterpret_cast<const uint8_t*>(&invoice), SIZE_PACKET_A);
         Void.updateDisplay("SELLER", "Broadcasting Invoice...");
         
         lastTx = millis();
@@ -110,18 +173,17 @@ void runSellerLoop() {
     }
 
     // ---------------------------------------------------------
-    // 2. LISTEN FOR TUNNEL RELAY (Phase 6)
+    // 2. LISTEN FOR TUNNEL RELAY (Phase 6) — ISR-gated, sized read
     // ---------------------------------------------------------
-    static uint8_t rx_buffer[VOID_MAX_PACKET_SIZE];
-    int state = Void.radio.readData(reinterpret_cast<uint8_t*>(NULL), 0);
+    if (!rx_flag) return;
+    rx_flag = false;
+    const size_t len = Void.radio.getPacketLength();
 
-    if (state == RADIOLIB_ERR_NONE) {
-        size_t len = Void.radio.getPacketLength();
+    // Safety bounds check
+    if (len <= VOID_MAX_PACKET_SIZE && len >= SIZE_VOID_HEADER) {
+        const int state = Void.radio.readData(rx_buffer, len);
 
-        // Safety bounds check
-        if (len <= VOID_MAX_PACKET_SIZE && len >= SIZE_VOID_HEADER) {
-            Void.radio.readData(rx_buffer, len);
-            
+        if (state == RADIOLIB_ERR_NONE) {
             // STRICT HEADER PEEKING
             uint16_t apid = getAPID(rx_buffer);
 
@@ -176,4 +238,5 @@ void runSellerLoop() {
             }
         }
     }
+    Void.radio.startReceive();  // re-arm RX for next packet
 }

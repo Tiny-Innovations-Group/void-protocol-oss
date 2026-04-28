@@ -23,6 +23,13 @@
 static bool       invoice_pending = false;
 static PacketA_t  pending_invoice;
 
+// --- RX ISR flag (DIO1 packet-received interrupt) ---
+// Replaces the earlier readData(NULL, 0) poll, which crashed the SX126x
+// SPI path with a StoreProhibited when a real packet arrived. Canonical
+// RadioLib pattern: ISR sets the flag, loop drains it with a sized read.
+static volatile bool rx_flag = false;
+static void IRAM_ATTR onRxDone() { rx_flag = true; }
+
 // --- Duty-cycle observation (VOID-128) ---
 // DUTY_CYCLE_TARGET_MS (36 s) comes from void_config.h. At this stage we only
 // LOG the observed inter-TX gap; hard enforcement is deferred to VOID-070.
@@ -107,55 +114,65 @@ static uint32_t loadLE32(const uint8_t* p) {
 // runBuyerLoop — RX PacketA, on "ACK_BUY" from ground build & TX PacketB.
 // ---------------------------------------------------------------------------
 void runBuyerLoop() {
-    // =====================================================================
-    // 1. LoRa space-link receive
-    // =====================================================================
-    static uint8_t rx_buffer[VOID_MAX_PACKET_SIZE];
-    const int state = Void.radio.readData(reinterpret_cast<uint8_t*>(NULL), 0);
+    // One-shot ISR arm: register DIO1 packet-received callback and put
+    // the radio into continuous RX on first entry.
+    static bool radio_armed = false;
+    if (!radio_armed) {
+        Void.radio.setDio1Action(onRxDone);
+        Void.radio.startReceive();
+        radio_armed = true;
+    }
 
-    if (state == RADIOLIB_ERR_NONE) {
+    // =====================================================================
+    // 1. LoRa space-link receive (ISR-gated, sized read)
+    // =====================================================================
+    if (rx_flag) {
+        rx_flag = false;
+        static uint8_t rx_buffer[VOID_MAX_PACKET_SIZE];
         const size_t len = Void.radio.getPacketLength();
 
         if (len <= VOID_MAX_PACKET_SIZE && len >= SIZE_VOID_HEADER) {
-            Void.radio.readData(rx_buffer, len);
-
+            const int state = Void.radio.readData(rx_buffer, len);
+            if (state == RADIOLIB_ERR_NONE) {
 #if VOID_PROTOCOL_TYPE == 2
-            if (!validSyncWord(rx_buffer)) {
-                Void.radio.startReceive();
-                return;
-            }
-#endif
-            const uint16_t apid = extractAPID(rx_buffer);
-
-            // --- RX PacketA: Invoice from Sat A (SELLER_APID) ---
-            if (apid == SELLER_APID && len == SIZE_PACKET_A) {
-                // VOID-128: validate the invoice CRC32 BEFORE struct cast.
-                // Protects downstream state from a flipped-bit header that
-                // happened to pass the sync-word + length + APID checks.
-                const size_t   crc_end  = offsetof(PacketA_t, crc32);
-                const uint32_t calc_crc = Void.calculateCRC(rx_buffer, crc_end);
-                const uint32_t wire_crc = loadLE32(rx_buffer + crc_end);
-                if (calc_crc != wire_crc) {
-                    Void.updateDisplay("BUYER", "PacketA CRC fail — drop");
-                    Serial.println("WARN:PacketA CRC mismatch, dropped");
+                if (!validSyncWord(rx_buffer)) {
                     Void.radio.startReceive();
                     return;
                 }
+#endif
+                const uint16_t apid = extractAPID(rx_buffer);
 
-                Void.updateDisplay("BUYER", "RX Invoice! Notifying Ground...");
-                memcpy(&pending_invoice, rx_buffer, SIZE_PACKET_A);
-                invoice_pending = true;
+                // --- RX PacketA: Invoice from Sat A (SELLER_APID) ---
+                if (apid == SELLER_APID && len == SIZE_PACKET_A) {
+                    // VOID-128: validate the invoice CRC32 BEFORE struct cast.
+                    // Protects downstream state from a flipped-bit header that
+                    // happened to pass the sync-word + length + APID checks.
+                    const size_t   crc_end  = offsetof(PacketA_t, crc32);
+                    const uint32_t calc_crc = Void.calculateCRC(rx_buffer, crc_end);
+                    const uint32_t wire_crc = loadLE32(rx_buffer + crc_end);
+                    if (calc_crc != wire_crc) {
+                        Void.updateDisplay("BUYER", "PacketA CRC fail — drop");
+                        Serial.println("WARN:PacketA CRC mismatch, dropped");
+                        Void.radio.startReceive();
+                        return;
+                    }
 
-                Serial.print("INVOICE:");
-                Void.hexDump(rx_buffer, len);
-            }
-            // --- RX PacketC: Receipt from Sat A (downlink passthrough) ---
-            else if (apid == SELLER_APID && len == SIZE_PACKET_C) {
-                Void.updateDisplay("BUYER", "RX Receipt! Wrapping Packet D...");
-                Serial.print("PACKET_D:");
-                Void.hexDump(rx_buffer, len);
+                    Void.updateDisplay("BUYER", "RX Invoice! Notifying Ground...");
+                    memcpy(&pending_invoice, rx_buffer, SIZE_PACKET_A);
+                    invoice_pending = true;
+
+                    Serial.print("INVOICE:");
+                    Void.hexDump(rx_buffer, len);
+                }
+                // --- RX PacketC: Receipt from Sat A (downlink passthrough) ---
+                else if (apid == SELLER_APID && len == SIZE_PACKET_C) {
+                    Void.updateDisplay("BUYER", "RX Receipt! Wrapping Packet D...");
+                    Serial.print("PACKET_D:");
+                    Void.hexDump(rx_buffer, len);
+                }
             }
         }
+        Void.radio.startReceive();  // re-arm RX for next packet
     }
 
     // =====================================================================
