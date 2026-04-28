@@ -53,9 +53,15 @@ bool GatewayClient::format_json(const uint8_t* sanitized_payload, size_t len) {
     return (written > 0 && static_cast<size_t>(written) < sizeof(_json_buffer));
 }
 
-bool GatewayClient::push_to_l2(const uint8_t* sanitized_payload, size_t len) {
-    if (!format_json(sanitized_payload, len)) {
-        std::puts("[ERROR] Failed to format JSON payload.");
+bool GatewayClient::push_to_l2(const uint8_t* frame_bytes, size_t frame_len) {
+    // The gateway's /api/v1/ingest reads c.Request.Body directly into the
+    // kaitai parser (gateway/internal/api/handlers/ingest.go:IngestPacket).
+    // We forward the on-wire frame bytes verbatim — sync word, header,
+    // body — and let the schema-validated parser do its work. The
+    // legacy 62-byte JSON path (format_json) is retained for local
+    // debugging only; it MUST NOT be used to feed the gateway.
+    if (frame_bytes == nullptr || frame_len == 0) {
+        std::puts("[ERROR] push_to_l2 called with empty frame.");
         return false;
     }
 
@@ -86,18 +92,30 @@ bool GatewayClient::push_to_l2(const uint8_t* sanitized_payload, size_t len) {
         return false;
     }
 
-    // 4. Construct HTTP POST natively (No Heap)
-    char http_request[512] = {0};
-    std::snprintf(http_request, sizeof(http_request),
+    // 4. Build HTTP headers only. The body is raw binary (frame may
+    // contain 0x00 bytes), so we send headers and body separately —
+    // we cannot use strlen-bounded snprintf on the body.
+    char headers[512] = {0};
+    const int written = std::snprintf(headers, sizeof(headers),
         "POST /api/v1/ingest HTTP/1.1\r\n"
         "Host: %s:%d\r\n"
-        "Content-Type: application/json\r\n"
+        "Content-Type: application/octet-stream\r\n"
         "Content-Length: %zu\r\n"
-        "Connection: close\r\n\r\n"
-        "%s", _host, _port, std::strlen(_json_buffer), _json_buffer);
+        "Connection: close\r\n\r\n",
+        _host, _port, frame_len);
+    if (written < 0 || static_cast<size_t>(written) >= sizeof(headers)) {
+        std::puts("[ERROR] HTTP header buffer overflow.");
+#ifdef _WIN32
+        closesocket(sock); WSACleanup();
+#else
+        close(sock);
+#endif
+        return false;
+    }
 
-    // 5. Send Data
-    send(sock, http_request, std::strlen(http_request), 0);
+    // 5. Send headers, then body. Two TCP writes — the kernel coalesces.
+    send(sock, headers, static_cast<size_t>(written), 0);
+    send(sock, reinterpret_cast<const char*>(frame_bytes), frame_len, 0);
 
     // 6. Cleanup
 #ifdef _WIN32

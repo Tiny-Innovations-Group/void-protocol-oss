@@ -305,7 +305,7 @@ int main(int argc, char* argv[]) {
                                 }
 
                                 // Push the LIVE hardware packet to the Go Gateway
-                                if (go_gateway.push_to_l2(cleartext_out, 62)) {
+                                if (go_gateway.push_to_l2(packet_bin, sizeof(packet_bin))) {
                                     std::puts("[GATEWAY] ✅ Live hardware payload delivered to Gateway.");
                                 } else {
                                     std::puts("[GATEWAY] ❌ Failed to reach Go Gateway.");

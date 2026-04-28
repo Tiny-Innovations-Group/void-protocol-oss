@@ -307,6 +307,8 @@ func IngestPacket(c *gin.Context) {
 	packet := protocol.NewVoidProtocol()
 	err = packet.Read(stream, nil, packet)
 
+	log.Printf("📥 RAW INGEST: Received %d bytes", len(rawData))
+
 	if err != nil {
 		log.Printf("⛔ BOUNCE: Malformed Protocol Frame: %v", err)
 		c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"error": "Invalid Void Protocol Frame"})

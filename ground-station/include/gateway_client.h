@@ -25,8 +25,11 @@ private:
 public:
     GatewayClient(const char* host, int port);
 
-    // Sends the sanitized payload to the Go Gin server
-    bool push_to_l2(const uint8_t* sanitized_payload, size_t len);
+    // POSTs the raw on-wire VOID frame to the Go gateway's
+    // /api/v1/ingest endpoint as application/octet-stream. The gateway
+    // hands the bytes straight to its kaitai parser; do not pre-strip
+    // or JSON-encode (format_json above is a debug helper only).
+    bool push_to_l2(const uint8_t* frame_bytes, size_t frame_len);
 };
 
 #endif // GATEWAY_CLIENT_H

@@ -63,6 +63,14 @@ func main() {
 	router := gin.Default()
 	registry.Initialize()
 
+	// VOID-127: seed the flat-sat demo pubkey so PacketB sig-verify
+	// works against the same Ed25519 keypair the firmware signs with
+	// (void-core/src/security_manager.cpp::begin under
+	// VOID_ALPHA_PLAINTEXT). VOID-121 replaces this post-HAB.
+	if err := registry.LoadFlatSatDemoKey(demoSellerSeedHex); err != nil {
+		log.Fatalf("flat-sat demo key load failed: %v", err)
+	}
+
 	// --- On-chain pipeline (VOID-052 submitter + VOID-135a receipts). ---
 	// Both share the same ethclient so we dial once.
 	chainDeps, cleanup, err := maybeInitChain()

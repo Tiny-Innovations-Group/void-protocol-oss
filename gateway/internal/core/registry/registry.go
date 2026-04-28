@@ -1,6 +1,9 @@
 package registry
 
 import (
+	"crypto/ed25519"
+	"encoding/hex"
+	"fmt"
 	"log"
 )
 
@@ -67,4 +70,34 @@ func Initialize() {
 func GetSat(id uint32) (SatRecord, bool) {
 	sat, exists := MockDB[id]
 	return sat, exists
+}
+
+// LoadFlatSatDemoKey derives the Ed25519 pubkey from the supplied 32-byte
+// seed (hex) and writes it into MockDB[FlatSatDemoSatID].PubKeyHex. Mirrors
+// the firmware-side detSeed under VOID_ALPHA_PLAINTEXT — the seller and
+// buyer Heltecs both sign with this key, so the gateway can verify their
+// PacketB signatures against a single registered identity. VOID-121
+// (per-sat segregation + PUF-backed attestation) replaces this post-HAB.
+func LoadFlatSatDemoKey(seedHex string) error {
+	seed, err := hex.DecodeString(seedHex)
+	if err != nil {
+		return fmt.Errorf("registry: decode flat-sat seed: %w", err)
+	}
+	if len(seed) != ed25519.SeedSize {
+		return fmt.Errorf("registry: flat-sat seed must be %d bytes, got %d",
+			ed25519.SeedSize, len(seed))
+	}
+	pub, ok := ed25519.NewKeyFromSeed(seed).Public().(ed25519.PublicKey)
+	if !ok {
+		return fmt.Errorf("registry: failed to derive ed25519 pubkey")
+	}
+	rec, exists := MockDB[FlatSatDemoSatID]
+	if !exists {
+		return fmt.Errorf("registry: FlatSatDemoSatID 0x%X not seeded — call Initialize() first",
+			FlatSatDemoSatID)
+	}
+	rec.PubKeyHex = hex.EncodeToString(pub)
+	MockDB[FlatSatDemoSatID] = rec
+	log.Printf("🔑 Flat-sat demo Ed25519 pubkey injected for sat 0x%X", FlatSatDemoSatID)
+	return nil
 }

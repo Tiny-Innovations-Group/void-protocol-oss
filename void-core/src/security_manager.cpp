@@ -39,18 +39,38 @@ bool SecurityManager::begin() {
     // The main loop is responsible for calling setGpsTimeValid(true) only
     // once GPS time is fixed AND exceeds _last_tx_epoch_ms by a safety margin.
 
-    // Simulate Unique Factory Injected PUFs based on Role
+    uint8_t seed[crypto_sign_SEEDBYTES];
+
+#ifdef VOID_ALPHA_PLAINTEXT
+    // VOID-127 / VOID-123: under the alpha plaintext build the entire
+    // flat-sat (seller, buyer, gateway test suite, golden vectors,
+    // receipt processor) shares ONE deterministic Ed25519 keypair so the
+    // gateway can verify on-wire signatures against a single registered
+    // pubkey. Bytes mirror void-core/test/test_sign_verify.cpp::kDetSeed
+    // and gateway/test/utils/generate_packets.go::detSeedHex.
+    // VOID-121 (per-sat segregation + attestation-backed keys) replaces
+    // this branch post-HAB.
+    static const uint8_t kDetSeed[crypto_sign_SEEDBYTES] = {
+        0xbc, 0x1d, 0xf4, 0xfa, 0x6e, 0x3d, 0x70, 0x48,
+        0x99, 0x2f, 0x14, 0xe6, 0x55, 0x06, 0x0c, 0xbb,
+        0x21, 0x90, 0xbd, 0xed, 0x90, 0x02, 0x52, 0x4c,
+        0x06, 0xe7, 0xcb, 0xb1, 0x63, 0xdf, 0x15, 0xfb,
+    };
+    static_assert(sizeof(kDetSeed) == crypto_sign_SEEDBYTES,
+                  "detSeed must be 32 bytes for Ed25519");
+    memcpy(seed, kDetSeed, sizeof(kDetSeed));
+#else
+    // Production / encrypted build: derive a per-role demo seed from a
+    // hardcoded factory secret. !!FAKE KEY FOR DEMO ONLY!! — replaced
+    // by VOID-121 PUF-backed keys before any non-alpha build.
     const char* env_key;
     #ifdef ROLE_SELLER
-        // Unique silicon simulation for Sat A !!FAKE KEY FOR DEMO ONLY!!
-        env_key = "Q9p4M&JjEUrmf3fW$i5AfWkWNREpEN8OYHXUg6F0^R9O2nm5EoQor%mtlcVCyLlC"; 
+        env_key = "Q9p4M&JjEUrmf3fW$i5AfWkWNREpEN8OYHXUg6F0^R9O2nm5EoQor%mtlcVCyLlC";
     #else
-        // Unique silicon simulation for Sat B !!FAKE KEY FOR DEMO ONLY!!
         env_key = "!1V2#E!UDzTeUjEvqYLbHt8BFnsnlWsIQPrl44zmPZZ8bSkqwng&JPQJQ2QHZVIx";
     #endif
-    
-    uint8_t seed[crypto_sign_SEEDBYTES];
     crypto_hash_sha256(seed, reinterpret_cast<const uint8_t*>(env_key), strlen(env_key));
+#endif
 
     crypto_sign_seed_keypair(_identity_pub, _identity_priv, seed);
     sodium_memzero(seed, sizeof(seed));
