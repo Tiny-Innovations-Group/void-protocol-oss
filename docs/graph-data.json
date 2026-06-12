@@ -2331,6 +2331,39 @@
       "created_at": "2026-06-12T06:58:38.231172+01:00",
       "updated_at": "2026-06-12T06:58:38.231172+01:00",
       "metadata_json": "{\"branch\":\"claude/interesting-robinson-ba1d98\",\"commit\":\"3185b9d\",\"confidence\":90}"
+    },
+    {
+      "id": 213,
+      "change_id": "cfb0b512-0002-46ac-814c-7e3229c8bf12",
+      "node_type": "observation",
+      "title": "Bench wedge root cause: busy-CAD tight loop — due heartbeat re-scans CAD every loop iteration while channel busy, holding radio out of RX; buyer detects seller's re-advertised invoices but never receives them. RadioLib verified sound (startReceive clears IRQ + remaps DIO1). Fix: 1s busy backoff + build-before-CAD + abort-TX-if-RX-landed-mid-CAD + 250ms lost-wakeup IRQ poll + bouncer echoes unmatched buyer lines",
+      "description": null,
+      "status": "pending",
+      "created_at": "2026-06-12T07:19:01.998329+01:00",
+      "updated_at": "2026-06-12T07:19:01.998329+01:00",
+      "metadata_json": "{\"branch\":\"claude/interesting-robinson-ba1d98\",\"confidence\":85}"
+    },
+    {
+      "id": 214,
+      "change_id": "c8585e4e-9054-47b6-8c99-ff75cf685b23",
+      "node_type": "action",
+      "title": "Harden heartbeat_tx: busy backoff, mid-CAD RX abort, lost-wakeup recovery in both roles, bouncer [SAT-B] echo",
+      "description": null,
+      "status": "pending",
+      "created_at": "2026-06-12T07:19:02.022281+01:00",
+      "updated_at": "2026-06-12T07:19:02.022281+01:00",
+      "metadata_json": "{\"branch\":\"claude/interesting-robinson-ba1d98\",\"confidence\":85,\"files\":[\"satellite-firmware/src/heartbeat_tx.cpp\",\"satellite-firmware/include/heartbeat_tx.h\",\"satellite-firmware/src/seller.cpp\",\"satellite-firmware/src/buyer.cpp\",\"ground-station/src/main.cpp\"]}"
+    },
+    {
+      "id": 215,
+      "change_id": "69569b03-ca54-4e12-ade5-c1436f9bb681",
+      "node_type": "outcome",
+      "title": "CAD-starvation fix landed: 1s busy backoff + mid-CAD RX abort + lost-wakeup recovery + bouncer [SAT-B] echo; all builds green",
+      "description": null,
+      "status": "pending",
+      "created_at": "2026-06-12T07:20:52.934683+01:00",
+      "updated_at": "2026-06-12T07:20:52.934683+01:00",
+      "metadata_json": "{\"branch\":\"claude/interesting-robinson-ba1d98\",\"commit\":\"630643f\",\"confidence\":90}"
     }
   ],
   "edges": [
@@ -4940,6 +4973,39 @@
       "weight": 1.0,
       "rationale": "Fix complete",
       "created_at": "2026-06-12T06:58:38.244418+01:00"
+    },
+    {
+      "id": 238,
+      "from_node_id": 212,
+      "to_node_id": 213,
+      "from_change_id": "b0d86919-6b08-4a01-a3b1-6b09b56e65c4",
+      "to_change_id": "cfb0b512-0002-46ac-814c-7e3229c8bf12",
+      "edge_type": "leads_to",
+      "weight": 1.0,
+      "rationale": "Second bench finding",
+      "created_at": "2026-06-12T07:19:02.004367+01:00"
+    },
+    {
+      "id": 239,
+      "from_node_id": 213,
+      "to_node_id": 214,
+      "from_change_id": "cfb0b512-0002-46ac-814c-7e3229c8bf12",
+      "to_change_id": "c8585e4e-9054-47b6-8c99-ff75cf685b23",
+      "edge_type": "leads_to",
+      "weight": 1.0,
+      "rationale": "Fix",
+      "created_at": "2026-06-12T07:19:02.028468+01:00"
+    },
+    {
+      "id": 240,
+      "from_node_id": 214,
+      "to_node_id": 215,
+      "from_change_id": "c8585e4e-9054-47b6-8c99-ff75cf685b23",
+      "to_change_id": "69569b03-ca54-4e12-ade5-c1436f9bb681",
+      "edge_type": "leads_to",
+      "weight": 1.0,
+      "rationale": "Fix complete",
+      "created_at": "2026-06-12T07:20:52.940648+01:00"
     }
   ]
 }
