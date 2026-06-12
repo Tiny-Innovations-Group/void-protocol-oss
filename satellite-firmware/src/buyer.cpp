@@ -235,14 +235,30 @@ void runBuyerLoop() {
     }
 
     // =====================================================================
-    // 1b. VOID-022: 30 s heartbeat telemetry (droppable, CAD-gated).
-    //     Skipped while an RX is pending (shared SX126x FIFO base).
+    // 1b. VOID-022 hardening: lost-wakeup recovery — if RxDone is latched
+    //     in the radio IRQ register but the DIO1 edge was missed, rx_flag
+    //     never fires and the frame rots in the FIFO. Synthesise the flag;
+    //     polled at most every 250 ms.
+    // =====================================================================
+    {
+        static unsigned long last_irq_poll = 0;
+        if (!rx_flag && millis() - last_irq_poll >= 250) {
+            last_irq_poll = millis();
+            if (Void.isRealReception()) rx_flag = true;
+        }
+    }
+
+    // =====================================================================
+    // 1c. VOID-022: 30 s heartbeat telemetry (droppable, CAD-gated, 1 s
+    //     backoff while busy). Skipped while an RX is pending (shared
+    //     SX126x FIFO base).
     // =====================================================================
     if (!rx_flag) {
         heartbeat_tx::service(
             BUYER_APID,
             invoice_pending ? heartbeat_tx::kSysStateConnected
-                            : heartbeat_tx::kSysStateRxActive);
+                            : heartbeat_tx::kSysStateRxActive,
+            &rx_flag);
     }
 
     // =====================================================================

@@ -24,7 +24,8 @@
 namespace heartbeat_tx {
 namespace {
 
-constexpr unsigned long kIntervalMs = 30000;  // VOID-022 AC cadence
+constexpr unsigned long kIntervalMs    = 30000;  // VOID-022 AC cadence
+constexpr unsigned long kBusyBackoffMs = 1000;   // CAD-busy retry spacing
 
 // Heltec V3 battery sense: ADC_CTRL (GPIO37) gates a 390k/100k divider
 // feeding VBAT_Read (GPIO1); battery mV ≈ adc × 4.9. The enable
@@ -73,21 +74,25 @@ int16_t readTempCenti() {
 
 }  // namespace
 
-bool service(uint16_t apid, uint8_t sys_state) {
-    static unsigned long last_tx = 0;
+bool service(uint16_t apid, uint8_t sys_state, volatile bool* rx_pending) {
+    static unsigned long last_tx         = 0;
+    static unsigned long next_attempt_ms = 0;
 
     // First heartbeat fires one full interval after boot — lets the
     // radio and GPS stub settle before the first frame.
     if (millis() - last_tx < kIntervalMs) return false;
 
-    // Droppable telemetry: a single CAD scan, defer while busy (timer
-    // not advanced, so it retries next loop), never forced. scanChannel
-    // leaves the radio in standby — re-arm RX before returning.
-    if (!Void.channelClear()) {
-        Void.radio.startReceive();
-        return false;
-    }
+    // Busy-backoff window: after a busy CAD, do NOT retry every loop
+    // iteration. Each scanChannel pulls the radio out of RX mode, so a
+    // tight retry loop deafens this board exactly while the peer is
+    // transmitting (observed on bench: buyer missed every re-advertised
+    // invoice once its due heartbeat started CAD-scanning against the
+    // seller's traffic). Heartbeat is droppable — losing a second of
+    // cadence costs nothing.
+    if (millis() < next_attempt_ms) return false;
 
+    // Gather inputs BEFORE the CAD scan so the clear-channel verdict is
+    // as fresh as possible when we commit to transmitting.
     GpsStub.update();
 
     heartbeat_builder::HeartbeatInputs in = {};
@@ -109,6 +114,26 @@ bool service(uint16_t apid, uint8_t sys_state) {
         return false;
     }
 
+    // Droppable telemetry: a single CAD scan, then a 1 s backoff while
+    // busy, never forced. scanChannel leaves the radio in standby —
+    // re-arm RX before returning.
+    if (!Void.channelClear()) {
+        Void.radio.startReceive();
+        next_attempt_ms = millis() + kBusyBackoffMs;
+        Serial.println("HB: channel busy - deferred");
+        return false;
+    }
+
+    // A frame may have landed during the CAD scan (the ISR sets the
+    // caller's flag). TX shares the SX126x FIFO base with RX, so
+    // transmitting now would clobber the received bytes — yield and
+    // let the main loop drain RX first.
+    if (rx_pending != nullptr && *rx_pending) {
+        Void.radio.startReceive();
+        next_attempt_ms = millis() + kBusyBackoffMs;
+        return false;
+    }
+
     Void.radio.transmit(frame, sizeof(frame));
     Void.radio.startReceive();
 
@@ -127,7 +152,8 @@ bool service(uint16_t apid, uint8_t sys_state) {
 #else  // CCSDS tier or no GPS stub: heartbeat disabled, keep linkage.
 
 namespace heartbeat_tx {
-bool service(uint16_t /*apid*/, uint8_t /*sys_state*/) { return false; }
+bool service(uint16_t /*apid*/, uint8_t /*sys_state*/,
+             volatile bool* /*rx_pending*/) { return false; }
 }  // namespace heartbeat_tx
 
 #endif  // VOID_PROTOCOL_TYPE == 2 && defined(VOID_GPS_STUB)

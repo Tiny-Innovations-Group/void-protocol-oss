@@ -349,6 +349,16 @@ int main(int argc, char* argv[]) {
                                 std::puts("[TELEMETRY] ⚠️  Malformed heartbeat line dropped.");
                             }
                         }
+                        // VOID-022: echo every unmatched line from the buyer
+                        // board. The buyer's USB serial is owned by this
+                        // process, so without an echo its diagnostics
+                        // (PACKET_D_RX:, WARN:, HB deferrals, …) are
+                        // invisible to the operator — which made the
+                        // 2026-06-12 heartbeat wedge needlessly hard to
+                        // triage. Bounded: line_buf is NUL-terminated above.
+                        else {
+                            std::printf("[SAT-B] %s\n", line_buf);
+                        }
                         line_idx = 0; // Reset buffer
                     }
                 } else if (line_idx < sizeof(line_buf) - 1) {
