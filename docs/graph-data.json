@@ -2298,6 +2298,39 @@
       "created_at": "2026-06-12T06:06:57.174055+01:00",
       "updated_at": "2026-06-12T06:06:57.174055+01:00",
       "metadata_json": "{\"branch\":\"void-022-heartbeat\",\"commit\":\"355e35f\",\"confidence\":95}"
+    },
+    {
+      "id": 210,
+      "change_id": "08f19577-daa2-40d4-b898-0cbe9bb670f9",
+      "node_type": "observation",
+      "title": "Bench 2026-06-12: heartbeats TX'ing (orange charge LED = VBAT divider held engaged by readVbattMv leaving GPIO37 driven — proof service() executes) but nothing stored: ground_station binary + gateway process were pre-branch-switch builds (build dirs gitignored). Fix: release ADC_CTRL to INPUT after read + dual-polarity probe (V3.0/3.1 LOW vs V3.2 HIGH); user must rebuild bouncer + restart gateway.",
+      "description": null,
+      "status": "pending",
+      "created_at": "2026-06-12T06:40:02.042141+01:00",
+      "updated_at": "2026-06-12T06:40:02.042141+01:00",
+      "metadata_json": "{\"branch\":\"claude/interesting-robinson-ba1d98\",\"confidence\":90}"
+    },
+    {
+      "id": 211,
+      "change_id": "b862d14a-5e52-4e0e-97a6-75e48812733c",
+      "node_type": "action",
+      "title": "Fix readVbattMv: probe both ADC_CTRL polarities, always release pin to INPUT (high-Z) — never hold the battery rail",
+      "description": null,
+      "status": "pending",
+      "created_at": "2026-06-12T06:40:02.068909+01:00",
+      "updated_at": "2026-06-12T06:40:02.068909+01:00",
+      "metadata_json": "{\"branch\":\"claude/interesting-robinson-ba1d98\",\"confidence\":90,\"files\":[\"satellite-firmware/src/heartbeat_tx.cpp\"]}"
+    },
+    {
+      "id": 212,
+      "change_id": "b0d86919-6b08-4a01-a3b1-6b09b56e65c4",
+      "node_type": "outcome",
+      "title": "VBAT pin fix landed: dual-polarity probe + release to INPUT; both envs SUCCESS. Orange LED should clear on reflash",
+      "description": null,
+      "status": "pending",
+      "created_at": "2026-06-12T06:58:38.231172+01:00",
+      "updated_at": "2026-06-12T06:58:38.231172+01:00",
+      "metadata_json": "{\"branch\":\"claude/interesting-robinson-ba1d98\",\"commit\":\"3185b9d\",\"confidence\":90}"
     }
   ],
   "edges": [
@@ -4874,6 +4907,39 @@
       "weight": 1.0,
       "rationale": "Wiring + evidence-log phase complete",
       "created_at": "2026-06-12T06:06:57.187174+01:00"
+    },
+    {
+      "id": 235,
+      "from_node_id": 209,
+      "to_node_id": 210,
+      "from_change_id": "c01feb05-2c92-488c-b556-1d39258f95e1",
+      "to_change_id": "08f19577-daa2-40d4-b898-0cbe9bb670f9",
+      "edge_type": "leads_to",
+      "weight": 1.0,
+      "rationale": "Bench finding",
+      "created_at": "2026-06-12T06:40:02.050481+01:00"
+    },
+    {
+      "id": 236,
+      "from_node_id": 210,
+      "to_node_id": 211,
+      "from_change_id": "08f19577-daa2-40d4-b898-0cbe9bb670f9",
+      "to_change_id": "b862d14a-5e52-4e0e-97a6-75e48812733c",
+      "edge_type": "leads_to",
+      "weight": 1.0,
+      "rationale": "Fix for bench finding",
+      "created_at": "2026-06-12T06:40:02.075064+01:00"
+    },
+    {
+      "id": 237,
+      "from_node_id": 211,
+      "to_node_id": 212,
+      "from_change_id": "b862d14a-5e52-4e0e-97a6-75e48812733c",
+      "to_change_id": "b0d86919-6b08-4a01-a3b1-6b09b56e65c4",
+      "edge_type": "leads_to",
+      "weight": 1.0,
+      "rationale": "Fix complete",
+      "created_at": "2026-06-12T06:58:38.244418+01:00"
     }
   ]
 }

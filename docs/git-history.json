@@ -1,5 +1,13 @@
 [
   {
+    "hash": "3185b9d829907d9185cf58933c20f7e23269b75f",
+    "short_hash": "3185b9d",
+    "author": "director-TIG",
+    "date": "2026-06-12T06:58:38+01:00",
+    "message": "VOID-022 fix: release VBAT ADC_CTRL pin after read (solid orange LED)\n\nBench finding: readVbattMv left GPIO37 driven OUTPUT after each read,\nholding the battery divider engaged on the battery rail — solid orange\ncharge LED on both boards + slow battery bleed. The pin is now released\nto INPUT (high-Z) after every probe, and the enable polarity is probed\nboth ways (V3.0/3.1 active-LOW, V3.2 active-HIGH) so real VBAT reads\nwork across board revisions. USB-only benches fall back to 4100 mV as\nbefore. Both alpha envs compile SUCCESS under CERT -Werror.\n\nCo-Authored-By: Claude Fable 5 <noreply@anthropic.com>",
+    "files_changed": 1
+  },
+  {
     "hash": "355e35fd0555e9cfed3935157b2217d129ec259a",
     "short_hash": "355e35f",
     "author": "director-TIG",
