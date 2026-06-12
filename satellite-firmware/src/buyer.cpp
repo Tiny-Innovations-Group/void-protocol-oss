@@ -15,6 +15,7 @@
 #include "security_manager.h"
 #include "gps_stub.h"
 #include "packet_d_builder.h"     // VOID-140: kPacketDMagic / kPacketDSize wire layout
+#include "heartbeat_tx.h"         // VOID-022: 30 s heartbeat telemetry
 
 #include <cstddef>
 #include <cstdint>
@@ -216,9 +217,32 @@ void runBuyerLoop() {
                     }
                 }
 #endif
+                // VOID-022: peer heartbeat (Packet L, len-unique on the
+                // alpha wire). CRC-verify, then emit HEARTBEAT_RX — the
+                // bouncer forwards this line's frame to the gateway for
+                // heartbeats.json evidence. CRC-fail drops silently.
+                else if (len == SIZE_HEARTBEAT_PCK) {
+                    const size_t hb_crc_off = SIZE_HEARTBEAT_PCK - 4u;
+                    const uint32_t hb_wire = loadLE32(rx_buffer + hb_crc_off);
+                    if (hb_wire == Void.calculateCRC(rx_buffer, hb_crc_off)) {
+                        Serial.print("HEARTBEAT_RX:");
+                        Void.hexDump(rx_buffer, len);
+                    }
+                }
             }
         }
         Void.radio.startReceive();  // re-arm RX for next packet
+    }
+
+    // =====================================================================
+    // 1b. VOID-022: 30 s heartbeat telemetry (droppable, CAD-gated).
+    //     Skipped while an RX is pending (shared SX126x FIFO base).
+    // =====================================================================
+    if (!rx_flag) {
+        heartbeat_tx::service(
+            BUYER_APID,
+            invoice_pending ? heartbeat_tx::kSysStateConnected
+                            : heartbeat_tx::kSysStateRxActive);
     }
 
     // =====================================================================
