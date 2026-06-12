@@ -26,24 +26,43 @@ namespace {
 
 constexpr unsigned long kIntervalMs = 30000;  // VOID-022 AC cadence
 
-// Heltec V3 battery sense: ADC_CTRL (GPIO37, active LOW) gates a
-// 390k/100k divider feeding VBAT_Read (GPIO1); battery mV ≈ adc × 4.9.
+// Heltec V3 battery sense: ADC_CTRL (GPIO37) gates a 390k/100k divider
+// feeding VBAT_Read (GPIO1); battery mV ≈ adc × 4.9. The enable
+// polarity differs across V3 board revisions (V3.0/3.1 active-LOW,
+// V3.2 active-HIGH), so probe both and keep whichever reads plausibly.
+//
+// CRITICAL: the control pin is released to INPUT (high-Z) after every
+// probe — bench finding 2026-06-12: leaving it driven holds the divider
+// engaged on the battery rail, which lights the charge LED solid orange
+// and slow-bleeds an attached battery. The board's own pull resistor
+// restores the idle state; we must never park the pin driven.
 constexpr uint8_t  kAdcCtrlPin        = 37u;
 constexpr uint8_t  kVbattAdcPin       = 1u;
 constexpr uint16_t kFallbackVbattMv   = 4100u;  // bench is often USB-only
 constexpr int16_t  kFallbackTempCenti = 2300;   // 23.00 °C
 
-uint16_t readVbattMv() {
+bool plausibleVbattMv(uint32_t mv) {
+    // 1S LiPo window with margin. USB-only benches (no battery) read
+    // ~0 mV; anything absurd means the divider was not engaged at this
+    // polarity or there is a wiring fault.
+    return mv >= 2500u && mv <= 5500u;
+}
+
+uint32_t probeVbattMv(uint8_t level) {
     pinMode(kAdcCtrlPin, OUTPUT);
-    digitalWrite(kAdcCtrlPin, LOW);   // enable the divider
+    digitalWrite(kAdcCtrlPin, level);
     delayMicroseconds(500);
     const uint32_t adc_mv = analogReadMilliVolts(kVbattAdcPin);
-    digitalWrite(kAdcCtrlPin, HIGH);  // disable to save power
-    const uint32_t batt_mv = (adc_mv * 49u) / 10u;
-    // USB-only benches read ~0 mV; absurd values mean a wiring or
-    // calibration fault. Fall back rather than report garbage telemetry.
-    if (batt_mv < 2500u || batt_mv > 5500u) return kFallbackVbattMv;
-    return static_cast<uint16_t>(batt_mv);
+    pinMode(kAdcCtrlPin, INPUT);  // release — never hold the rail
+    return (adc_mv * 49u) / 10u;
+}
+
+uint16_t readVbattMv() {
+    const uint32_t low_mv = probeVbattMv(LOW);   // V3.0 / V3.1 enable
+    if (plausibleVbattMv(low_mv)) return static_cast<uint16_t>(low_mv);
+    const uint32_t high_mv = probeVbattMv(HIGH); // V3.2 enable
+    if (plausibleVbattMv(high_mv)) return static_cast<uint16_t>(high_mv);
+    return kFallbackVbattMv;  // no battery attached / USB-only bench
 }
 
 int16_t readTempCenti() {
