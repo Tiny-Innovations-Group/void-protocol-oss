@@ -2199,6 +2199,105 @@
       "created_at": "2026-06-12T05:37:55.644728+01:00",
       "updated_at": "2026-06-12T05:37:55.644728+01:00",
       "metadata_json": "{\"branch\":\"claude/interesting-robinson-ba1d98\",\"confidence\":95}"
+    },
+    {
+      "id": 201,
+      "change_id": "281cf173-c3e9-43d8-ae62-25a5b5938028",
+      "node_type": "goal",
+      "title": "VOID-022 (#7): Heartbeat generation & transmission — last protocol ticket before the flat-sat gate",
+      "description": null,
+      "status": "pending",
+      "created_at": "2026-06-12T05:44:33.112934+01:00",
+      "updated_at": "2026-06-12T05:44:33.112934+01:00",
+      "metadata_json": "{\"branch\":\"void-022-heartbeat\",\"confidence\":90,\"prompt\":\"be fore we do the heart beat work we need to create a new branch for it, as i want to protect main at this point.  once we have our new `VOID-022 — Heartbeat branch` then check it out and begin to the work. as any questions if needed\"}"
+    },
+    {
+      "id": 202,
+      "change_id": "47321298-37a0-4898-a671-b41b28cd3d7c",
+      "node_type": "option",
+      "title": "HB telemetry: real VBAT ADC + ESP32-S3 internal temp (fallback constants)",
+      "description": null,
+      "status": "pending",
+      "created_at": "2026-06-12T05:50:56.385939+01:00",
+      "updated_at": "2026-06-12T05:50:56.385939+01:00",
+      "metadata_json": "{\"branch\":\"void-022-heartbeat\",\"confidence\":85}"
+    },
+    {
+      "id": 203,
+      "change_id": "3bef6d58-1598-46da-8fc1-646c16957040",
+      "node_type": "option",
+      "title": "HB telemetry: stub constants only",
+      "description": null,
+      "status": "pending",
+      "created_at": "2026-06-12T05:50:56.404472+01:00",
+      "updated_at": "2026-06-12T05:50:56.404472+01:00",
+      "metadata_json": "{\"branch\":\"void-022-heartbeat\",\"confidence\":50}"
+    },
+    {
+      "id": 204,
+      "change_id": "620d2d8d-1d2c-4b32-8157-d8ae9975adb7",
+      "node_type": "option",
+      "title": "HB TX policy: every 30s, droppable single-CAD (defer while busy)",
+      "description": null,
+      "status": "pending",
+      "created_at": "2026-06-12T05:50:56.421296+01:00",
+      "updated_at": "2026-06-12T05:50:56.421296+01:00",
+      "metadata_json": "{\"branch\":\"void-022-heartbeat\",\"confidence\":85}"
+    },
+    {
+      "id": 205,
+      "change_id": "dee7cdcf-bbf8-4438-bd9a-08ba0783d3d2",
+      "node_type": "option",
+      "title": "HB TX policy: idle-only suppression",
+      "description": null,
+      "status": "pending",
+      "created_at": "2026-06-12T05:50:56.437362+01:00",
+      "updated_at": "2026-06-12T05:50:56.437362+01:00",
+      "metadata_json": "{\"branch\":\"void-022-heartbeat\",\"confidence\":50}"
+    },
+    {
+      "id": 206,
+      "change_id": "0aa0f2da-5e60-43a2-ab28-c119eba56532",
+      "node_type": "decision",
+      "title": "VOID-022 scope: real VBAT+temp, 30s droppable-CAD TX, PLUS user-added evidence log — bouncer forwards HB frames to gateway, gateway appends gateway/data/heartbeats.json JSONL beside receipts.json (HAB ground-segment pattern)",
+      "description": null,
+      "status": "pending",
+      "created_at": "2026-06-12T05:50:56.452321+01:00",
+      "updated_at": "2026-06-12T05:50:56.452321+01:00",
+      "metadata_json": "{\"branch\":\"void-022-heartbeat\",\"confidence\":90}"
+    },
+    {
+      "id": 207,
+      "change_id": "fb33d752-0a9e-4be2-8b7f-2c65d1629dd0",
+      "node_type": "action",
+      "title": "VOID-022 phase 1: heartbeat_builder in void-core (SNLP, mirrors packet_d_builder) + red-green golden tests vs packet_l.bin + CMake registration",
+      "description": null,
+      "status": "pending",
+      "created_at": "2026-06-12T05:53:02.120509+01:00",
+      "updated_at": "2026-06-12T05:53:02.120509+01:00",
+      "metadata_json": "{\"branch\":\"void-022-heartbeat\",\"confidence\":85,\"files\":[\"void-core/include/heartbeat_builder.h\",\"void-core/src/heartbeat_builder.cpp\",\"void-core/test/test_heartbeat_builder.cpp\",\"void-core/CMakeLists.txt\"]}"
+    },
+    {
+      "id": 208,
+      "change_id": "4df3820b-42aa-45f9-9592-234eba4e34c1",
+      "node_type": "action",
+      "title": "VOID-022 phase 2: firmware wiring — gps_stub telemetry accessors (lat/lon 1e7, ISA pressure from synthetic alt), heartbeat_tx module (30s droppable CAD, real VBAT GPIO1/37 + temperatureRead with fallbacks), seller+buyer service calls + HEARTBEAT_RX CRC-verified evidence logging",
+      "description": null,
+      "status": "pending",
+      "created_at": "2026-06-12T05:55:47.535992+01:00",
+      "updated_at": "2026-06-12T05:55:47.535992+01:00",
+      "metadata_json": "{\"branch\":\"void-022-heartbeat\",\"confidence\":85,\"files\":[\"satellite-firmware/src/heartbeat_tx.cpp\",\"satellite-firmware/include/heartbeat_tx.h\",\"satellite-firmware/src/gps_stub.cpp\",\"satellite-firmware/include/gps_stub.h\",\"satellite-firmware/src/seller.cpp\",\"satellite-firmware/src/buyer.cpp\"]}"
+    },
+    {
+      "id": 209,
+      "change_id": "c01feb05-2c92-488c-b556-1d39258f95e1",
+      "node_type": "outcome",
+      "title": "VOID-022 code landed (355e35f, branch void-022-heartbeat, NOT on main): heartbeat_builder golden-exact (67/67 ctest), heartbeat_tx 30s droppable-CAD with real VBAT+temp, seller/buyer wiring + HEARTBEAT_RX evidence, bouncer forward, gateway CRC-gated heartbeats.json store (5 new Go tests, full suite green), pio both envs SUCCESS. Remaining: flash + bench (heartbeats on wire during transactions, heartbeats.json populating) before striking #7.",
+      "description": null,
+      "status": "pending",
+      "created_at": "2026-06-12T06:06:57.174055+01:00",
+      "updated_at": "2026-06-12T06:06:57.174055+01:00",
+      "metadata_json": "{\"branch\":\"void-022-heartbeat\",\"commit\":\"355e35f\",\"confidence\":95}"
     }
   ],
   "edges": [
@@ -4654,6 +4753,127 @@
       "weight": 1.0,
       "rationale": "Bench-validated VOID-139 fix set",
       "created_at": "2026-06-12T05:37:55.661427+01:00"
+    },
+    {
+      "id": 224,
+      "from_node_id": 201,
+      "to_node_id": 202,
+      "from_change_id": "281cf173-c3e9-43d8-ae62-25a5b5938028",
+      "to_change_id": "47321298-37a0-4898-a671-b41b28cd3d7c",
+      "edge_type": "leads_to",
+      "weight": 1.0,
+      "rationale": "Telemetry option",
+      "created_at": "2026-06-12T05:50:56.457175+01:00"
+    },
+    {
+      "id": 225,
+      "from_node_id": 201,
+      "to_node_id": 203,
+      "from_change_id": "281cf173-c3e9-43d8-ae62-25a5b5938028",
+      "to_change_id": "3bef6d58-1598-46da-8fc1-646c16957040",
+      "edge_type": "leads_to",
+      "weight": 1.0,
+      "rationale": "Telemetry option",
+      "created_at": "2026-06-12T05:50:56.462046+01:00"
+    },
+    {
+      "id": 226,
+      "from_node_id": 201,
+      "to_node_id": 204,
+      "from_change_id": "281cf173-c3e9-43d8-ae62-25a5b5938028",
+      "to_change_id": "620d2d8d-1d2c-4b32-8157-d8ae9975adb7",
+      "edge_type": "leads_to",
+      "weight": 1.0,
+      "rationale": "TX policy option",
+      "created_at": "2026-06-12T05:50:56.467050+01:00"
+    },
+    {
+      "id": 227,
+      "from_node_id": 201,
+      "to_node_id": 205,
+      "from_change_id": "281cf173-c3e9-43d8-ae62-25a5b5938028",
+      "to_change_id": "dee7cdcf-bbf8-4438-bd9a-08ba0783d3d2",
+      "edge_type": "leads_to",
+      "weight": 1.0,
+      "rationale": "TX policy option",
+      "created_at": "2026-06-12T05:50:56.471865+01:00"
+    },
+    {
+      "id": 228,
+      "from_node_id": 202,
+      "to_node_id": 206,
+      "from_change_id": "47321298-37a0-4898-a671-b41b28cd3d7c",
+      "to_change_id": "0aa0f2da-5e60-43a2-ab28-c119eba56532",
+      "edge_type": "leads_to",
+      "weight": 1.0,
+      "rationale": "Chosen",
+      "created_at": "2026-06-12T05:50:56.476347+01:00"
+    },
+    {
+      "id": 229,
+      "from_node_id": 204,
+      "to_node_id": 206,
+      "from_change_id": "620d2d8d-1d2c-4b32-8157-d8ae9975adb7",
+      "to_change_id": "0aa0f2da-5e60-43a2-ab28-c119eba56532",
+      "edge_type": "leads_to",
+      "weight": 1.0,
+      "rationale": "Chosen + user evidence-log extension",
+      "created_at": "2026-06-12T05:50:56.480966+01:00"
+    },
+    {
+      "id": 230,
+      "from_node_id": 206,
+      "to_node_id": 207,
+      "from_change_id": "0aa0f2da-5e60-43a2-ab28-c119eba56532",
+      "to_change_id": "fb33d752-0a9e-4be2-8b7f-2c65d1629dd0",
+      "edge_type": "leads_to",
+      "weight": 1.0,
+      "rationale": "Implementing chosen scope",
+      "created_at": "2026-06-12T05:53:02.126958+01:00"
+    },
+    {
+      "id": 231,
+      "from_node_id": 201,
+      "to_node_id": 207,
+      "from_change_id": "281cf173-c3e9-43d8-ae62-25a5b5938028",
+      "to_change_id": "fb33d752-0a9e-4be2-8b7f-2c65d1629dd0",
+      "edge_type": "leads_to",
+      "weight": 1.0,
+      "rationale": "Implementation step",
+      "created_at": "2026-06-12T05:53:02.133284+01:00"
+    },
+    {
+      "id": 232,
+      "from_node_id": 207,
+      "to_node_id": 208,
+      "from_change_id": "fb33d752-0a9e-4be2-8b7f-2c65d1629dd0",
+      "to_change_id": "4df3820b-42aa-45f9-9592-234eba4e34c1",
+      "edge_type": "leads_to",
+      "weight": 1.0,
+      "rationale": "Next phase",
+      "created_at": "2026-06-12T05:55:47.541894+01:00"
+    },
+    {
+      "id": 233,
+      "from_node_id": 207,
+      "to_node_id": 209,
+      "from_change_id": "fb33d752-0a9e-4be2-8b7f-2c65d1629dd0",
+      "to_change_id": "c01feb05-2c92-488c-b556-1d39258f95e1",
+      "edge_type": "leads_to",
+      "weight": 1.0,
+      "rationale": "Builder phase complete",
+      "created_at": "2026-06-12T06:06:57.180698+01:00"
+    },
+    {
+      "id": 234,
+      "from_node_id": 208,
+      "to_node_id": 209,
+      "from_change_id": "4df3820b-42aa-45f9-9592-234eba4e34c1",
+      "to_change_id": "c01feb05-2c92-488c-b556-1d39258f95e1",
+      "edge_type": "leads_to",
+      "weight": 1.0,
+      "rationale": "Wiring + evidence-log phase complete",
+      "created_at": "2026-06-12T06:06:57.187174+01:00"
     }
   ]
 }

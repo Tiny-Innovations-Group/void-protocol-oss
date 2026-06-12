@@ -1,5 +1,13 @@
 [
   {
+    "hash": "355e35fd0555e9cfed3935157b2217d129ec259a",
+    "short_hash": "355e35f",
+    "author": "director-TIG",
+    "date": "2026-06-12T06:06:40+01:00",
+    "message": "VOID-022: heartbeat generation, transmission + ground evidence log\n\nFirmware (both boards, SNLP alpha):\n- heartbeat_builder in void-core — pure function, byte-exact vs golden\n  packet_l.bin (7 new red-green tests, void-core ctest 67/67)\n- heartbeat_tx shared service: 30 s cadence, droppable single-CAD LBT\n  (defers while busy, never forced), real Heltec V3 VBAT (GPIO1/37\n  divider) + ESP32-S3 internal temp with fallback constants, GPS-stub\n  lat/lon (1e7 fixed-point) + two-layer ISA pressure from the synthetic\n  trajectory altitude\n- seller/buyer: service call gated on !rx_flag (shared SX126x FIFO);\n  sys_state maps rx_active(3) idle / connected(4) in-transaction;\n  CRC-verified HEARTBEAT_RX evidence branches on both RX paths\n\nGround evidence log (user-added scope, decision 192->206):\n- bouncer forwards HEARTBEAT_TX:/HEARTBEAT_RX: buyer-serial lines to\n  the gateway via the existing octet-stream ingest (bounded VOID-138\n  hex decoder; ground-station ctest 41/41)\n- gateway: CRC-first gate on Packet L (VOID-122 posture), new\n  internal/core/telemetry JSONL store -> gateway/data/heartbeats.json,\n  repo-root anchored like receipts.json (VOID_HEARTBEATS_PATH override);\n  handlers.Heartbeats injection mirrors Submitter; 5 new Go tests\n\nAll suites green: Go gateway full pass, void-core 67/67, ground-station\n41/41, pio seller_alpha + buyer_alpha SUCCESS under CERT -Werror.\nBench validation (heartbeats visible in the 10/10 wire + heartbeats.json\npopulating) remains before closing #7.\n\nCo-Authored-By: Claude Fable 5 <noreply@anthropic.com>",
+    "files_changed": 17
+  },
+  {
     "hash": "214dda68a4541b7abaea5d7dbf3f6e08ed352e6d",
     "short_hash": "214dda6",
     "author": "director-TIG",
