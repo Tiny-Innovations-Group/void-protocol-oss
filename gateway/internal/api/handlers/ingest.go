@@ -3,15 +3,18 @@ package handlers
 import (
 	"bytes"
 	"encoding/binary"
+	"encoding/hex"
 	"encoding/json"
 	"io"
 	"log"
 	"math/big"
 	"net/http"
+	"time"
 
 	"github.com/Tiny-Innovations-Group/void-protocol-oss/gateway/internal/core/chain"
 	"github.com/Tiny-Innovations-Group/void-protocol-oss/gateway/internal/core/registry"
 	"github.com/Tiny-Innovations-Group/void-protocol-oss/gateway/internal/core/security"
+	"github.com/Tiny-Innovations-Group/void-protocol-oss/gateway/internal/core/telemetry"
 	void_protocol "github.com/Tiny-Innovations-Group/void-protocol-oss/gateway/internal/void_protocol"
 	"github.com/Tiny-Innovations-Group/void-protocol-oss/gateway/internal/void_protocol/protocol"
 	"github.com/ethereum/go-ethereum/common"
@@ -27,6 +30,12 @@ import (
 // submitted. This keeps existing tests and the Kaitai parser suite
 // independent of the chain package.
 var Submitter chain.Enqueuer
+
+// Heartbeats is the optional heartbeat evidence sink (VOID-022). The
+// server wires a *telemetry.Store at startup; tests inject a mock.
+// nil means "no persistence" — heartbeats still parse, CRC-gate, and
+// log. Same injection pattern as Submitter above.
+var Heartbeats telemetry.Appender
 
 // Helper function to pretty-print any struct as JSON -> useful for debugging complex payloads
 func prettyPrintStruct(name string, v interface{}) {
@@ -113,16 +122,70 @@ func bodyOffsetZero(raw []byte, isSnlp bool) (byte, bool) {
 	return raw[headerLen], true
 }
 
+// apidFromRaw re-derives the 11-bit APID from the routing header bytes.
+// The heartbeat body carries no identity field — the APID is the only
+// emitter identity on a Packet L (seller 100 / buyer 101). Returns -1
+// if the buffer is too short to contain the ID field.
+func apidFromRaw(raw []byte, isSnlp bool) int {
+	off := 0
+	if isSnlp {
+		off = 4 // SNLP prepends the 4-byte sync word (VOID-113)
+	}
+	if len(raw) < off+2 {
+		return -1
+	}
+	return int(raw[off]&0x07)<<8 | int(raw[off+1])
+}
+
 // handlePayloadBody processes the packet body and returns true if handled, false if unknown type.
 // We pass rawData as a pointer to the slice to avoid unnecessary copying, though slices are already descriptors.
 func handlePayloadBody(body interface{}, rawData *[]byte, c *gin.Context, packetSize int, isSnlp bool) bool {
 	switch b := body.(type) {
 	case *protocol.VoidProtocol_HeartbeatBody:
+		// VOID-022: CRC-first — same defensive posture as the VOID-122
+		// D/ACK gates. The trailing 4 bytes are CRC32 over everything
+		// before them (Packet L has no tail pad). Reject bit-flips
+		// before logging or persisting any field as evidence.
+		if err := void_protocol.ValidateFrameCRC32(*rawData, packetSize-4); err != nil {
+			log.Printf("level=warn event=heartbeat.crc_fail err=%q", err.Error())
+			c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"error": "Heartbeat CRC mismatch"})
+			return true
+		}
 		lat := float64(b.LatFixed) / 10000000.0
 		lon := float64(b.LonFixed) / 10000000.0
 		temp := float64(b.TempC) / 100.0
 		log.Printf("   💓 HEARTBEAT (L) | Temp: %.2f°C | Batt: %dmV | GPS: [%.4f, %.4f] | Speed: %d cm/s",
 			temp, b.VbattMv, lat, lon, b.GpsSpeedCms)
+		// VOID-022 evidence log: append to heartbeats.json when a sink
+		// is wired. Persistence failure logs but does not reject the
+		// frame — the wire accepted it; the file is best-effort ground
+		// evidence, not an integrity gate.
+		if Heartbeats != nil {
+			tier := "ccsds"
+			if isSnlp {
+				tier = "snlp"
+			}
+			rec := telemetry.HeartbeatRecord{
+				ReceivedAtMs: time.Now().UnixMilli(),
+				Apid:         apidFromRaw(*rawData, isSnlp),
+				Tier:         tier,
+				EpochTs:      b.EpochTs,
+				PressurePa:   b.PressurePa,
+				LatFixed:     b.LatFixed,
+				LonFixed:     b.LonFixed,
+				VbattMv:      b.VbattMv,
+				TempC:        b.TempC,
+				GpsSpeedCms:  b.GpsSpeedCms,
+				SysState:     uint8(b.SysState),
+				SatLock:      b.SatLock,
+				RawHex:       hex.EncodeToString(*rawData),
+			}
+			if err := Heartbeats.Append(rec); err != nil {
+				log.Printf("level=warn event=heartbeat.persist_fail err=%q", err.Error())
+			} else {
+				log.Printf("level=info event=heartbeat.persisted apid=%d vbatt_mv=%d", rec.Apid, rec.VbattMv)
+			}
+		}
 		return true
 
 	case *protocol.VoidProtocol_PacketABody:

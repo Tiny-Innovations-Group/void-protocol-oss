@@ -1,5 +1,37 @@
 [
   {
+    "hash": "b4e0531ddedbf1834e5c829264b4bff82865ba9b",
+    "short_hash": "b4e0531",
+    "author": "director-TIG",
+    "date": "2026-09-13T11:34:59+01:00",
+    "message": "VOID-141: ImGui ground-station console — stage-1 inert port (#6.5)\n\nPort of the frozen 19-iteration HTML mock-up to Dear ImGui per the\none-shot handover spec docs/VOID-141_IMGUI_PORT_SPEC.md.\n\n- ui/main.cpp: single 1760x826 non-resizable window, 4 fixed panels\n  (RF Comms 7-leg + gate strip, Go Server, L2 Blockchain, Operator\n  Controls), RUN clock, digits-filtered contract value (32-byte\n  buffer + 16-char cap per spec 5.4/6.4), receipts drawer, help\n  modal (660px), error strip. Glyph parity with mockup restored\n  (U+2194, U+2014, U+00B7, U+2192).\n- CMake: VOID_BUILD_UI option (default OFF); GLFW 3.3.8 + ImGui\n  1.90.5 via FetchContent; full CERT -Werror stack on UI glue code;\n  SYSTEM includes for vendored imgui.\n- ui/mockup.html: frozen design source, committed as reference.\n- docs: PORT_SPEC (frozen) added; original ticket doc SUPERSEDED.\n- journey: #6.5 In progress (stage-1 done; wiring = future tickets\n  per spec section 8) + Change Log v17.\n- .gitignore: build*/ now covers build-ui/.\n\nVerified: clean -Werror build, 41/41 ground-station ctest, 10s\nruntime smoke. Live-data wiring deliberately not started.\nDecision graph 231-275 (freeze), 278-282 (port + verify).",
+    "files_changed": 7
+  },
+  {
+    "hash": "630643fa60e2198422a64180800f789ac0df4351",
+    "short_hash": "630643f",
+    "author": "director-TIG",
+    "date": "2026-06-12T07:20:52+01:00",
+    "message": "VOID-022 fix: busy-CAD backoff — heartbeat starved buyer RX of invoices\n\nBench finding: a due heartbeat re-scanned CAD every loop iteration\nwhile the channel was busy. Each scanChannel pulls the SX1262 out of\nRX mode, so the buyer could DETECT the seller's re-advertised invoices\nbut never sat in RX long enough to RECEIVE one — wedged at \"DELIVERY\nRECEIVED\" with heartbeats still flowing.\n\n- heartbeat_tx: 1 s backoff after a busy CAD (droppable telemetry,\n  never tight-loops); inputs gathered before the scan; TX aborted if a\n  frame lands mid-CAD (shared FIFO base — never clobber a reception);\n  \"HB: channel busy - deferred\" breadcrumb.\n- seller/buyer: lost-wakeup recovery — synthesise rx_flag if RxDone is\n  latched with no DIO1 edge seen (250 ms poll), so a frame can never\n  rot unnoticed in the FIFO.\n- bouncer: echo unmatched buyer-serial lines as [SAT-B] — the buyer's\n  diagnostics were invisible (its USB serial is owned by the bouncer),\n  which made this wedge needlessly hard to triage.\n\npio seller_alpha + buyer_alpha SUCCESS (CERT -Werror); ground_station\nrebuilt clean; ctest green. RadioLib internals verified sound\n(startReceive clears IRQ + remaps DIO1) — the bug was ours.\n\nCo-Authored-By: Claude Fable 5 <noreply@anthropic.com>",
+    "files_changed": 5
+  },
+  {
+    "hash": "3185b9d829907d9185cf58933c20f7e23269b75f",
+    "short_hash": "3185b9d",
+    "author": "director-TIG",
+    "date": "2026-06-12T06:58:38+01:00",
+    "message": "VOID-022 fix: release VBAT ADC_CTRL pin after read (solid orange LED)\n\nBench finding: readVbattMv left GPIO37 driven OUTPUT after each read,\nholding the battery divider engaged on the battery rail — solid orange\ncharge LED on both boards + slow battery bleed. The pin is now released\nto INPUT (high-Z) after every probe, and the enable polarity is probed\nboth ways (V3.0/3.1 active-LOW, V3.2 active-HIGH) so real VBAT reads\nwork across board revisions. USB-only benches fall back to 4100 mV as\nbefore. Both alpha envs compile SUCCESS under CERT -Werror.\n\nCo-Authored-By: Claude Fable 5 <noreply@anthropic.com>",
+    "files_changed": 1
+  },
+  {
+    "hash": "355e35fd0555e9cfed3935157b2217d129ec259a",
+    "short_hash": "355e35f",
+    "author": "director-TIG",
+    "date": "2026-06-12T06:06:40+01:00",
+    "message": "VOID-022: heartbeat generation, transmission + ground evidence log\n\nFirmware (both boards, SNLP alpha):\n- heartbeat_builder in void-core — pure function, byte-exact vs golden\n  packet_l.bin (7 new red-green tests, void-core ctest 67/67)\n- heartbeat_tx shared service: 30 s cadence, droppable single-CAD LBT\n  (defers while busy, never forced), real Heltec V3 VBAT (GPIO1/37\n  divider) + ESP32-S3 internal temp with fallback constants, GPS-stub\n  lat/lon (1e7 fixed-point) + two-layer ISA pressure from the synthetic\n  trajectory altitude\n- seller/buyer: service call gated on !rx_flag (shared SX126x FIFO);\n  sys_state maps rx_active(3) idle / connected(4) in-transaction;\n  CRC-verified HEARTBEAT_RX evidence branches on both RX paths\n\nGround evidence log (user-added scope, decision 192->206):\n- bouncer forwards HEARTBEAT_TX:/HEARTBEAT_RX: buyer-serial lines to\n  the gateway via the existing octet-stream ingest (bounded VOID-138\n  hex decoder; ground-station ctest 41/41)\n- gateway: CRC-first gate on Packet L (VOID-122 posture), new\n  internal/core/telemetry JSONL store -> gateway/data/heartbeats.json,\n  repo-root anchored like receipts.json (VOID_HEARTBEATS_PATH override);\n  handlers.Heartbeats injection mirrors Submitter; 5 new Go tests\n\nAll suites green: Go gateway full pass, void-core 67/67, ground-station\n41/41, pio seller_alpha + buyer_alpha SUCCESS under CERT -Werror.\nBench validation (heartbeats visible in the 10/10 wire + heartbeats.json\npopulating) remains before closing #7.\n\nCo-Authored-By: Claude Fable 5 <noreply@anthropic.com>",
+    "files_changed": 17
+  },
+  {
     "hash": "214dda68a4541b7abaea5d7dbf3f6e08ed352e6d",
     "short_hash": "214dda6",
     "author": "director-TIG",
@@ -187,7 +219,7 @@
     "hash": "c2cc171460669ff0930c1818bd987a48803308ec",
     "short_hash": "c2cc171",
     "author": "director-TIG",
-    "date": "2026-02-20T18:28:02+00:00",
+    "date": "2026-02-20T18:28:02Z",
     "message": "Feat: Implement C++ CLI Ground Station Bouncer with local libsodium build",
     "files_changed": 23
   }
