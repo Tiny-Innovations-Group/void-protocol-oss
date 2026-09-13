@@ -3409,6 +3409,61 @@
       "created_at": "2026-09-13T14:07:45.341887+01:00",
       "updated_at": "2026-09-13T14:07:45.341887+01:00",
       "metadata_json": "{\"branch\":\"void_142_part1\",\"commit\":\"b5dc412\",\"confidence\":90,\"files\":[\"ground-station/ui/main.cpp\"]}"
+    },
+    {
+      "id": 311,
+      "change_id": "db0dcd1e-294a-44cf-9fce-2019cc0ff9b5",
+      "node_type": "goal",
+      "title": "Operator console polish: CLEAR buttons on all log streams + receipts, HTTP log column header",
+      "description": null,
+      "status": "pending",
+      "created_at": "2026-09-13T17:28:06.002706+01:00",
+      "updated_at": "2026-09-13T17:28:06.002706+01:00",
+      "metadata_json": "{\"branch\":\"void_142_part1\",\"confidence\":95,\"prompt\":\"We are now looking to update the Void Ground Station console with a few things to improve life We need a clear button on all of the streams so we can clear the logs that are coming through because it's rather messy. We need a clear button on receipts as well which will clear all receipts and we need to add some headers to the HTTP log at the top of the box so we know the timestamp, what that code is and what have you. That way it's easy, we can easily check it at a glance to understand what's happening. I think that's all.\\n\\n[Session decisions: receipts CLEAR = view-only (hidden-key snapshot, receipts.json untouched — TRL 4 evidence preserved); all six surfaces get CLEAR (Panel 1 RF, Panel 2 HTTP, Panel 3 chain, EXECUTED QUERIES, error strip, receipts drawer).]\"}"
+    },
+    {
+      "id": 312,
+      "change_id": "4881699a-b579-4e8b-8120-1984f91dcbec",
+      "node_type": "action",
+      "title": "Implement CLEAR buttons (5 rings via log_ring_reset + receipts view-clear) and gin-aligned HTTP log column header",
+      "description": null,
+      "status": "pending",
+      "created_at": "2026-09-13T17:28:08.576824+01:00",
+      "updated_at": "2026-09-13T17:28:08.576824+01:00",
+      "metadata_json": "{\"branch\":\"void_142_part1\",\"confidence\":95,\"files\":[\"ground-station/ui/main.cpp\",\"ground-station/ui/receipts_tailer.h\",\"ground-station/ui/receipts_tailer.cpp\"]}"
+    },
+    {
+      "id": 313,
+      "change_id": "daa380ed-8fb4-432f-a4a2-d33c63917e2d",
+      "node_type": "outcome",
+      "title": "Console polish landed (uncommitted, atop VOID-142 stage-2 tree): CLEAR on all 5 log rings (rf/http/chain/cmds/errors via log_ring_reset + zeroed snapshots) + view-only receipts CLEAR (hidden[32] key snapshot in receipts_view_t; receipts.json untouched — TRL 4 evidence preserved; Settlements/Restart-safe stay file-truth) + pinned gin-aligned HTTP log column header (pipes at cols 28/34/50/68, matched to gin v1.11.0 DefaultLogFormatter). Verified: clean -Werror build, 41/41 ctest, 6s runtime smoke, 6-assert receipts-clear logic harness (populate→clear→re-poll→new-receipt-visible→status-flip-stays-hidden→clear-again).",
+      "description": null,
+      "status": "pending",
+      "created_at": "2026-09-13T17:33:28.434180+01:00",
+      "updated_at": "2026-09-13T17:33:28.434180+01:00",
+      "metadata_json": "{\"branch\":\"void_142_part1\",\"confidence\":95}"
+    },
+    {
+      "id": 314,
+      "change_id": "c5373f17-a0d5-4006-9129-37a62d72a31a",
+      "node_type": "action",
+      "title": "Committed stage-2 bouncer/serial wiring (prior-session work, +322/-56) and pushed to PR #22",
+      "description": null,
+      "status": "pending",
+      "created_at": "2026-09-13T17:42:40.267859+01:00",
+      "updated_at": "2026-09-13T17:42:40.267859+01:00",
+      "metadata_json": "{\"branch\":\"void_142_part1\",\"commit\":\"93d31ad\",\"confidence\":90}"
+    },
+    {
+      "id": 315,
+      "change_id": "07a452d8-813b-45cd-bcd8-e1365488df50",
+      "node_type": "action",
+      "title": "Committed console polish (CLEAR buttons + HTTP header) and pushed to PR #22",
+      "description": null,
+      "status": "pending",
+      "created_at": "2026-09-13T17:42:40.317533+01:00",
+      "updated_at": "2026-09-13T17:42:40.317533+01:00",
+      "metadata_json": "{\"branch\":\"void_142_part1\",\"commit\":\"b33cb55\",\"confidence\":90}"
     }
   ],
   "edges": [
@@ -7184,6 +7239,61 @@
       "weight": 1.0,
       "rationale": "executed",
       "created_at": "2026-09-13T14:07:54.635358+01:00"
+    },
+    {
+      "id": 344,
+      "from_node_id": 284,
+      "to_node_id": 311,
+      "from_change_id": "a2a74fa0-6f12-40d7-9088-2abafb5ad2e4",
+      "to_change_id": "db0dcd1e-294a-44cf-9fce-2019cc0ff9b5",
+      "edge_type": "leads_to",
+      "weight": 1.0,
+      "rationale": "Operator UX polish landing under the VOID-142 umbrella (SNAP FULL / errors-filter precedent)",
+      "created_at": "2026-09-13T17:28:08.549737+01:00"
+    },
+    {
+      "id": 345,
+      "from_node_id": 311,
+      "to_node_id": 312,
+      "from_change_id": "db0dcd1e-294a-44cf-9fce-2019cc0ff9b5",
+      "to_change_id": "4881699a-b579-4e8b-8120-1984f91dcbec",
+      "edge_type": "leads_to",
+      "weight": 1.0,
+      "rationale": "Implementation",
+      "created_at": "2026-09-13T17:28:11.385475+01:00"
+    },
+    {
+      "id": 346,
+      "from_node_id": 312,
+      "to_node_id": 313,
+      "from_change_id": "4881699a-b579-4e8b-8120-1984f91dcbec",
+      "to_change_id": "daa380ed-8fb4-432f-a4a2-d33c63917e2d",
+      "edge_type": "leads_to",
+      "weight": 1.0,
+      "rationale": "Verification of the clear buttons + HTTP header work",
+      "created_at": "2026-09-13T17:33:28.456584+01:00"
+    },
+    {
+      "id": 347,
+      "from_node_id": 284,
+      "to_node_id": 314,
+      "from_change_id": "a2a74fa0-6f12-40d7-9088-2abafb5ad2e4",
+      "to_change_id": "c5373f17-a0d5-4006-9129-37a62d72a31a",
+      "edge_type": "leads_to",
+      "weight": 1.0,
+      "rationale": "Stage-2 lands on the PR branch",
+      "created_at": "2026-09-13T17:42:40.292046+01:00"
+    },
+    {
+      "id": 348,
+      "from_node_id": 312,
+      "to_node_id": 315,
+      "from_change_id": "4881699a-b579-4e8b-8120-1984f91dcbec",
+      "to_change_id": "07a452d8-813b-45cd-bcd8-e1365488df50",
+      "edge_type": "leads_to",
+      "weight": 1.0,
+      "rationale": "Commit + push of the implemented polish",
+      "created_at": "2026-09-13T17:42:40.338787+01:00"
     }
   ]
 }

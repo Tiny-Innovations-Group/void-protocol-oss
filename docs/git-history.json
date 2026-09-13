@@ -1,5 +1,21 @@
 [
   {
+    "hash": "b33cb55dac8eebbdab7084635499cf20393e3c83",
+    "short_hash": "b33cb55",
+    "author": "director-TIG",
+    "date": "2026-09-13T17:41:42+01:00",
+    "message": "VOID-142: operator console polish — CLEAR buttons on all streams + HTTP log header\n\nOperator request: logs get messy mid-demo; receipts drawer and HTTP\nlog need at-a-glance readability.\n\n- CLEAR button on every log surface, right-aligned on each label row\n  (SmallButton + Panel-4 RUN-clock alignment idiom): Panel 1 RF,\n  Panel 2 HTTP, Panel 3 blockchain, EXECUTED QUERIES, error strip\n  (empties all lines regardless of active filter tab). Rings reset\n  via the existing log_ring_reset(); per-frame snapshot re-empties\n  the box.\n- Receipts drawer CLEAR is view-only: receipts_clear_view()\n  snapshots current (payment_id, tx_hash) pairs into a bounded\n  hidden[32] table in receipts_view_t; receipt_is_hidden() filters\n  the drawer across the 2 Hz re-reads. Cleared receipts stay hidden\n  (incl. later PENDING->DISPATCHED flips); NEW receipts appear\n  normally. receipts.json is never modified — TRL 4 restart evidence\n  preserved; Settlements counter + Restart-safe gate stay file-truth.\n  Empty state notes \"-- receipts cleared --\".\n- HTTP log gains a pinned column header over gin's request lines,\n  pipes aligned exactly to gin v1.11.0 DefaultLogFormatter (verified:\n  cols 28/34/50/68): TIMESTAMP | CODE | LATENCY | IP | METHOD | PATH.\n  Non-gin gateway lines (level=info events, packet dumps) appear as-is.\n\nVerified: clean -Werror build; 41/41 ctest; 6s runtime smoke;\n6-assert receipts-clear harness (populate -> clear -> re-poll ->\nnew-receipt-visible -> hidden status flip -> clear-again).\nDecision graph 311-313.",
+    "files_changed": 3
+  },
+  {
+    "hash": "93d31ad22eaf7424cad56406c5aa642d7ce29a27",
+    "short_hash": "93d31ad",
+    "author": "director-TIG",
+    "date": "2026-09-13T17:41:28+01:00",
+    "message": "VOID-142 stage-2: bouncer child wiring — Panel 1 RF legs, SEND ACK, live gate\n\n- proc_manager: proc_bouncer_start(serial_port) spawns the\n  ground-station bouncer binary with piped stdin + merged\n  stdout/stderr (same log-pipe pattern as anvil/gateway);\n  proc_stdin_write writes CLI lines (\"ack\\n\") to a child's stdin.\n  SIGPIPE already ignored by proc_init.\n- bouncer (src/main.cpp): setvbuf(stdout, _IOLBF) so piped stdout\n  flushes per line — Panel 1 receives each log promptly\n  (PORT_SPEC section 8 gotcha).\n- Panel 1 goes live: bouncer stdout (\"rf\" tag) fills a new RF ring\n  and drives the 7-leg FSM — [HARDWARE] invoice/payment lines,\n  [BOUNCER] verify pass/tamper, [ACK] emit, [EGRESS] receipt\n  dispatch, [TELEMETRY] heartbeat, [SAT-B] PACKET_D_RX closes the\n  D leg. Gateway milestone keywords (settlebatch.ok,\n  receipt.persisted) drive SETTLE / C legs.\n- Live gate strip: Passes n/10, tamper rejects (each FAIL resets the\n  run), restart-safe from receipts.json persistence (VOID-130).\n- Panel 4: SERIAL PORT input (empty = test mode, tst_ack path) +\n  SEND ACK button (bouncer CLI stdin); START and the deploy chain\n  start the bouncer behind the gateway.\n- Errors ring gains the \"rf\" source tag + bouncer drop keywords.\n\nClean -Werror build; 41/41 ctest.",
+    "files_changed": 4
+  },
+  {
     "hash": "b5dc41213fb921381d109c4b02c22ccd6c39ae6a",
     "short_hash": "b5dc412",
     "author": "director-TIG",
