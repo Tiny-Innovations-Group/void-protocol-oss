@@ -147,7 +147,6 @@ bool g_drawer_open       = false;
 bool g_help_open         = false;
 bool g_help_just_opened  = false;
 char g_last_action[64]     = "--";
-char g_contract_value[32]  = "500";
 char g_run_buf[16]         = "RUN 00:00:00";
 
 // --- SNAP FULL (VOID-142): uniform render-scale state. Frozen
@@ -379,18 +378,45 @@ void begin_panel(const char* id, const float x, const float y) {
     ImGui::BeginChild(id, ImVec2(SC(kPanelW), SC(kPanelH)), true);
 }
 
-// Reject anything that is not an ASCII digit (CONTRACT VALUE field).
-// Also enforce the spec 6.4 cap of 16 characters (buffer is 32; the
-// length limit lives here, not in the buffer size).
-int digit_filter(ImGuiInputTextCallbackData* data) {
-    const ImWchar c = data->EventChar;
-    if (c < static_cast<ImWchar>('0') || c > static_cast<ImWchar>('9')) {
-        return 1;
+// Word-wrap helper for the NEXT QUERY preview: inserts '\n' BEFORE a
+// non-space run would overflow `width` (hard-breaks only >width
+// tokens). Bounded; always NUL-terminated.
+void wrap_text(const char* src, char* dst, std::size_t cap,
+               const std::size_t width) {
+    if (dst == nullptr || cap == 0) return;
+    dst[0] = '\0';
+    if (src == nullptr) return;
+    std::size_t used = 0;
+    std::size_t col  = 0;
+    for (std::size_t i = 0; src[i] != '\0' && used + 1 < cap; ++i) {
+        char c = src[i];
+        if (c == ' ') {
+            // Word boundary: jump to a new line if the NEXT token
+            // would pass the width.
+            std::size_t tok = 0;
+            while (src[i + 1 + tok] != '\0' && src[i + 1 + tok] != ' ') {
+                ++tok;
+            }
+            if (col + 1 + tok > width) {
+                dst[used++] = '\n';
+                col = 0;
+                continue; // skip the space itself
+            }
+            dst[used++] = ' ';
+            ++col;
+            continue;
+        }
+        if (col >= width) {
+            dst[used++] = '\n';
+            col = 0;
+            if (c == '\n') { // should not happen, bound anyway
+                continue;
+            }
+        }
+        dst[used++] = (c == '\n') ? ' ' : c;
+        ++col;
     }
-    if (data->BufTextLen >= 16) {
-        return 1;
-    }
-    return 0;
+    dst[used] = '\0';
 }
 
 void render_panel1() {
@@ -594,12 +620,6 @@ void render_side_panel() {
     // (receipts.json tail). Tab state persists across hide/show.
     if (ImGui::BeginTabBar("SideTabs", ImGuiTabBarFlags_None)) {
         if (ImGui::BeginTabItem("EDIT CONTRACT")) {
-            ImGui::TextDisabled("CONTRACT VALUE (next invoice amount):");
-            ImGui::SetNextItemWidth(-1.0f);
-            ImGui::InputText("##contract_value", g_contract_value,
-                             static_cast<int>(sizeof(g_contract_value)),
-                             ImGuiInputTextFlags_CallbackCharFilter, digit_filter);
-            ImGui::Spacing();
             ImGui::TextUnformatted("CURRENT:");
             ImGui::SameLine();
             ImGui::TextUnformatted((proc_escrow()[0] != '\0') ? proc_escrow() : "--");
@@ -648,16 +668,20 @@ void render_side_panel() {
             // truth — built from the same statics the worker spawns)
             // plus the executed ring, newest at bottom.
             ImGui::TextDisabled("NEXT QUERY (raw):");
-            log_box("CmdPreview", proc_forge_cmdline(), SC(40.0f));
-            log_ring_render(&g_ring_cmds, g_cmds_text, sizeof(g_cmds_text), "");
+            static char cmd_preview[1024];
+            wrap_text(proc_forge_cmdline(), cmd_preview,
+                      sizeof(cmd_preview), 72);
+            log_box("CmdPreview", cmd_preview, SC(56.0f));
             ImGui::TextDisabled("EXECUTED QUERIES (raw — newest at bottom):");
-            log_box("CmdHistory", g_cmds_text, SC(120.0f));
+            log_ring_render(&g_ring_cmds, g_cmds_text, sizeof(g_cmds_text), "");
+            log_box("CmdHistory", g_cmds_text, SC(104.0f));
             ImGui::EndTabItem();
         }
         if (ImGui::BeginTabItem("VIEW RECEIPTS")) {
             ImGui::TextDisabled("receipts.json — read-only tail (live)");
-            // Upsert table rendered as JSON-ish lines, newest at
-            // bottom; file re-scans at 2 Hz.
+            // Two indented lines per record (chosen layout): payment
+            // id on line 1, tx hash + status on line 2. Deterministic
+            // wrap, no mid-field breaks. Bounded per frame.
             static char drawer_text[32768];
             drawer_text[0] = '\0';
             std::size_t used = 0;
@@ -665,7 +689,7 @@ void render_side_panel() {
                 const receipt_key_t& k = g_receipts.keys[i];
                 const int n = std::snprintf(
                     drawer_text + used, sizeof(drawer_text) - used,
-                    "{\"payment_id\":\"%s\",\"tx_hash\":\"%s\",\"status\":\"%s\"}\n",
+                    "{\"payment_id\":\"%s\",\n   \"tx_hash\":\"%s\",\"status\":\"%s\"}\n",
                     k.payment_id, k.tx_hash, k.status);
                 if (n < 0 || static_cast<std::size_t>(n) >= sizeof(drawer_text) - used) {
                     break; // leave NUL in place; truncation is explicit
