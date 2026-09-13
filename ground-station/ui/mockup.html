@@ -1,0 +1,463 @@
+<!DOCTYPE html>
+<!--
+  🛰️ VOID PROTOCOL v2.1 | Tiny Innovation Group Ltd
+  -------------------------------------------------------------------------
+  Authority: Tiny Innovation Group Ltd
+  License:   Apache 2.0
+  Status:    Authenticated Clean Room Spec
+  File:      mockup.html
+  Desc:      VOID-141 UI design prototype — HTML mockup, iterate then port to ImGui
+  -------------------------------------------------------------------------
+  Design-surface only: iterate here, then port the settled design back to
+  ground-station/ui/main.cpp (Dear ImGui). Single self-contained file —
+  no build step, no dependencies, opens straight off disk.
+-->
+
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>VOID Ground Station Console (VOID-141 mockup)</title>
+<style>
+/* ---- Theme tokens: ImGui StyleColorsDark, alpha-composited ---- */
+:root {
+  --console-bg:        #101010;
+  --panel-border:      #3f3f48;
+  --text:              #ffffff;
+  --text-dim:          #808080;
+  --btn:               #24456e;
+  --btn-hover:         #4297fa;
+  --btn-active:        #0f87fa;
+  --btn-danger:        #8c1f1f;
+  --btn-danger-hover:  #bf3333;
+  --btn-danger-active: #e64040;
+}
+
+/* ---- Fixed geometry: mirrors ui/main.cpp stage-1 constants ---- */
+:root {
+  --win-w: 1280px;  --win-h: 720px;
+  --margin: 12px;   --spacing: 12px;
+  --panel-w: 622px; --panel-h: 342px;
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+html, body { background: #060608; }
+
+body {
+  font-family: "SF Mono", "Cascadia Mono", Menlo, Consolas, "DejaVu Sans Mono", monospace;
+  font-size: 14px;
+  line-height: 18px;
+  color: var(--text);
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.console {
+  width: var(--win-w);
+  height: var(--win-h);
+  background: var(--console-bg);
+  position: relative;
+}
+
+/* ---- Panels: fixed children, same grid as the ImGui shell ---- */
+.panel {
+  position: absolute;
+  width: var(--panel-w);
+  height: var(--panel-h);
+  padding: 8px 10px;
+  border: 1px solid var(--panel-border);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.panel-pipeline { left: var(--margin);  top: var(--margin); }
+.panel-goserver {
+  left: calc(var(--margin) + var(--panel-w) + var(--spacing));
+  top: var(--margin);
+}
+.panel-l2 {
+  left: var(--margin);
+  top: calc(var(--margin) + var(--panel-h) + var(--spacing));
+}
+.panel-controls {
+  left: calc(var(--margin) + var(--panel-w) + var(--spacing));
+  top: calc(var(--margin) + var(--panel-h) + var(--spacing));
+}
+
+.panel h2 { font-size: 13px; font-weight: 400; }
+
+/* ---- Scroll log windows ---- */
+.log {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  white-space: pre;
+  padding: 4px 6px;
+  background: #0a0a0a;
+  border: 1px solid #2a2a30;
+}
+.log-label { margin-top: 8px; }
+
+.rule { border: none; border-top: 1px solid var(--panel-border); margin: 6px 0; }
+
+/* ---- Pipeline legs ---- */
+.legs { list-style: none; }
+.legs li { padding-left: 15px; position: relative; }
+.legs li::before { content: "\2022"; position: absolute; left: 3px; }
+.leg-name  { display: inline-block; width: 19ch; white-space: pre; }
+.leg-state { color: var(--text-dim); }
+
+/* ---- Leg state colors ---- */
+.st-idle   { color: var(--text-dim); }
+.st-active { color: var(--btn-hover); }
+.st-ok     { color: #43c666; }
+.st-fail   { color: #e64040; }
+
+/* ---- Panel status markers: 10x10 squares ---- */
+.dot {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 0;
+  margin-right: 7px;
+  background: #5a5a64;
+}
+.dot-active { background: var(--btn-hover); }
+.dot-ok     { background: #43c666; }
+.dot-fail   { background: #e64040; }
+
+/* ---- Read-only text readouts (gateway / L2) ---- */
+.readout { white-space: pre; }
+.dim { color: var(--text-dim); }
+
+/* ---- Controls ---- */
+.controls-stack { display: flex; flex-direction: column; gap: 4px; margin-top: 8px; }
+button {
+  font: inherit;
+  width: 100%;
+  height: 40px;
+  background: var(--btn);
+  color: var(--text);
+  border: none;
+  border-radius: 0;
+  cursor: pointer;
+}
+button:hover  { background: var(--btn-hover); }
+button:active { background: var(--btn-active); }
+.btn-danger      { background: var(--btn-danger); }
+.btn-danger:hover  { background: var(--btn-danger-hover); }
+.btn-danger:active { background: var(--btn-danger-active); }
+.btn-pair { display: flex; gap: 8px; }
+.btn-pair button { flex: 1 1 0; width: auto; }
+
+/* ---- Contract value input ---- */
+.field-row { display: flex; align-items: center; gap: 8px; margin-top: 6px; }
+input {
+  font: inherit;
+  width: 280px;
+  height: 24px;
+  padding: 0 6px;
+  background: #1d2f4a;
+  color: var(--text);
+  border: none;
+  border-radius: 0;
+}
+input:focus { background: #3b5587; outline: 1px solid var(--btn-hover); }
+.field-hint { margin-top: 2px; }
+
+/* Title row: title left, inline RUN clock pushed right */
+.panel-head { display: flex; align-items: center; }
+.run-inline { margin-left: auto; }
+
+.gate-strip { padding-top: 3px; }
+
+/* ---- Receipts drawer: toggled window docked to the console's right side ---- */
+.drawer {
+  position: absolute;
+  top: 0;
+  left: 100%;
+  height: var(--win-h);
+  width: 480px;
+  background: var(--console-bg);
+  border: 1px solid var(--panel-border);
+  padding: 8px 10px;
+  display: none;
+  z-index: 10;
+}
+.drawer.open { display: block; }
+
+/* ---- Help modal ---- */
+.modal-backdrop {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: var(--win-w);
+  height: var(--win-h);
+  background: rgba(0, 0, 0, 0.65);
+  display: none;
+  align-items: center;
+  justify-content: center;
+  z-index: 20;
+}
+.modal-backdrop.open { display: flex; }
+.modal {
+  width: 620px;
+  max-height: 660px;
+  overflow: auto;
+  background: var(--console-bg);
+  border: 1px solid var(--panel-border);
+  padding: 10px 14px;
+}
+.modal h3 { font-size: 14px; font-weight: 400; margin-top: 10px; }
+.modal h3:first-child { margin-top: 0; }
+.modal .mono { white-space: pre; }
+.modal-actions { margin-top: 14px; }
+.modal-actions button { width: 200px; }
+.shell { display: flex; flex-direction: column; gap: 8px; }
+
+/* ---- Error strip below the console ---- */
+.error-strip {
+  width: var(--win-w);
+  background: #0a0a0a;
+  border: 1px solid #2a2a30;
+  padding: 6px 10px 8px;
+}
+.error-strip .log-label { margin-top: 0; }
+.error-strip .log { height: 64px; }
+</style>
+</head>
+<body>
+
+<div class="shell">
+
+<main class="console">
+
+  <section class="panel panel-pipeline">
+    <h2><span class="dot"></span>1. RF Comms (Ground ↔ Sat)</h2>
+    <hr class="rule">
+    <ul class="legs" id="legs"></ul>
+    <hr class="rule">
+    <div class="log-label dim">LOG (sample)</div>
+    <div class="log">10:14:02  A     Invoice TX'd                 apid=100 len=80
+10:14:05  B     Payment RX                   sig OK
+10:14:06  ACK   Buyer ack TX'd               apid=101 len=136
+10:14:12  SETTLE settleBatch block=2          tx=0xb21f...
+10:14:14  C     Receipt built                status=PENDING
+10:14:15  C     Receipt dispatched           apid=100 len=112
+10:14:18  D     Delivery RX                  CRC OK
+10:15:23  HB    heartbeat                    VBAT=3980mV T=38C</div>
+    <div class="gate-strip">Passes <span id="pass-count">0</span>/10 · Tamper rejects <span id="tamper-count">0</span> · Restart-safe <span id="restart-safe">--</span></div>
+  </section>
+
+  <section class="panel panel-goserver">
+    <h2><span class="dot"></span>2. Go Server (Gateway)</h2>
+    <hr class="rule">
+    <div class="readout">Status:           UNCONNECTED
+Packets in:       --
+Sig verify ok:    --
+Sig verify fail:  --
+Intents queued:   --
+Receipts PENDING: --
+Receipts SENT:    --</div>
+    <div class="log-label dim">HTTP LOG (sample)</div>
+    <div class="log">10:14:05  200  POST  /api/v1/ingest    packetb.enqueued
+10:14:12  200  GET   /pending          receipts=true
+10:14:14  200  POST  /ack              status=dispatched
+10:14:15  200  GET   /pending          receipts=false
+10:15:02  200  GET   /api/v1/status
+10:15:47  400  POST  /api/v1/ingest    sig fail</div>
+  </section>
+
+  <section class="panel panel-l2">
+    <h2><span class="dot"></span>3. L2 Blockchain (Anvil)</h2>
+    <hr class="rule">
+    <div class="readout">Status:      UNCONNECTED
+Block:       --
+Contract:    --
+Settlements: --</div>
+    <div class="log-label dim">BLOCKCHAIN LOG (sample — newest at bottom)</div>
+    <div class="log">10:14:12  block 2 mined
+10:14:12  tx 0xb21f  settleBatch()            escrow
+10:14:12  event SettlementCreated             block=2</div>
+  </section>
+
+  <section class="panel panel-controls">
+    <h2 class="panel-head"><span class="dot"></span>4. Operator Controls<span class="run-inline">RUN&nbsp;<span id="run-clock">00:00:00</span></span></h2>
+    <hr class="rule">
+    <div class="field-row">
+      <label for="contract-value">CONTRACT VALUE:</label>
+      <input id="contract-value" type="text" inputmode="numeric" maxlength="16" value="500" spellcheck="false" autocomplete="off">
+    </div>
+    <div class="dim field-hint">amount used by LOAD NEXT CONTRACT</div>
+    <div class="controls-stack">
+      <button data-action="LOAD NEXT CONTRACT">LOAD NEXT CONTRACT</button>
+      <div class="btn-pair">
+        <button data-action="START">START</button>
+        <button data-action="STOP">STOP</button>
+      </div>
+      <div class="btn-pair">
+        <button data-action="SEND ACK">SEND ACK</button>
+        <button data-action="VIEW RECEIPTS">VIEW RECEIPTS</button>
+        <button data-action="HELP">HELP</button>
+      </div>
+      <button class="btn-danger" data-action="EXIT">EXIT</button>
+    </div>
+    <hr class="rule">
+    <div>Last action: <span id="last-action">--</span></div>
+  </section>
+
+  <aside class="drawer" id="receipts-drawer">
+    <div class="log-label dim">receipts.json — read-only tail (sample)</div>
+    <div class="log">{"payment_id":"d78a91","tx_hash":"0x2b3c","status":"DISPATCHED"}
+{"payment_id":"c3d4e5","tx_hash":"0x9f8e","status":"DISPATCHED"}
+{"payment_id":"f0a1b2","tx_hash":"0x5d6c","status":"PENDING"}
+{"payment_id":"708a9b","tx_hash":"0x1a2b","status":"DISPATCHED"}
+{"payment_id":"4d5e6f","tx_hash":"0x77cc","status":"DISPATCHED"}
+{"payment_id":"9c0d1e","tx_hash":"0xa1e2","status":"PENDING"}
+{"payment_id":"e5f6a7","tx_hash":"0xc3a9","status":"DISPATCHED"}
+{"payment_id":"a1b2c3","tx_hash":"0xb21f","status":"DISPATCHED"}</div>
+  </aside>
+
+  <div class="modal-backdrop" id="help-modal">
+    <div class="modal">
+      <h3>What you need to do</h3>
+      <div class="mono">1. Set CONTRACT VALUE        (amount for the next invoice)
+2. LOAD NEXT CONTRACT         deploys a fresh Escrow, re-points gateway
+3. START                      brings up Anvil - gateway - bouncer in order
+4. Watch Panel 1 / 3          RF comms live; chain logs settlements
+5. SEND ACK                   operator authorises the buyer payment
+6. VIEW RECEIPTS              read-only tail of receipts.json
+7. STOP / EXIT                graceful halt of run / whole stack</div>
+
+      <h3>Panels</h3>
+      <div>1. RF Comms (Ground ↔ Sat) — everything sent over the radio:
+    ground-station radio ↔ satellite Heltecs. Invoice (A), Payment (B),
+    ACK, Receipt (C), Delivery (D), Heartbeat (HB) all appear here.
+2. Go Server (Gateway) — gateway health, verify counters, HTTP request log.
+3. L2 Blockchain (Anvil) — mined blocks, settleBatch txs, SettlementCreated
+    events; newest at bottom.
+4. Operator Controls — the demo lifecycle lives here: load, start, stop.</div>
+
+      <h3>Leg states</h3>
+      <div>[IDLE]   no activity yet
+[ACTIVE] leg currently in progress
+[OK]     leg completed successfully
+[FAIL]   CRC or signature failed — resets the pass counter</div>
+
+      <h3>Gate (bottom of Panel 1)</h3>
+      <div>Passes 10/10 · Tamper rejects visible · Restart-safe:
+a full demo pass is one clean A → B → ACK → SETTLE → C → D run.
+10 consecutive passes = flat-sat alpha done.</div>
+
+      <div class="modal-actions">
+        <button data-close-help>CLOSE HELP</button>
+      </div>
+    </div>
+  </div>
+
+</main>
+
+<div class="error-strip">
+  <div class="log-label dim">ERRORS — all panels (sample)</div>
+  <div class="log">10:15:47  gw      packetb.sig_fail — 400 (bad Ed25519 sig)
+10:15:12  chain   escrow submit retry #1 (RPC timeout)
+10:14:59  rf      PacketA CRC fail — frame dropped</div>
+</div>
+
+</div>
+
+<script>
+// Leg table mirrors kLegs[] in ui/main.cpp; render keeps HTML in sync with data.
+const LEGS = [
+  { name: "A    — Invoice",      state: "IDLE" },
+  { name: "B    — Payment",      state: "IDLE" },
+  { name: "ACK  — Sig Verified", state: "IDLE" },
+  { name: "SETTLE — On-Chain",   state: "IDLE" },
+  { name: "C    — Receipt",      state: "IDLE" },
+  { name: "D    — Delivery",     state: "IDLE" },
+  { name: "HB   — Heartbeat",    state: "IDLE" },
+];
+
+const legsEl = document.getElementById("legs");
+for (const leg of LEGS) {
+  const li = document.createElement("li");
+  const name = document.createElement("span");
+  name.className = "leg-name";
+  name.textContent = leg.name;
+  const state = document.createElement("span");
+  state.className = "leg-state st-" + leg.state.toLowerCase();
+  state.textContent = "[" + leg.state + "]";
+  li.appendChild(name);
+  li.appendChild(state);
+  legsEl.appendChild(li);
+}
+
+function setLegState(name, state) {
+  const items = legsEl.children;
+  for (let i = 0; i < items.length; ++i) {
+    if (items[i].querySelector(".leg-name").textContent === name) {
+      const el = items[i].querySelector(".leg-state");
+      el.textContent = "[" + state + "]";
+      el.className = "leg-state st-" + state.toLowerCase();
+    }
+  }
+}
+
+// Contract value: digits only, bounded (mirrors the planned static char[32] field).
+const valueInput = document.getElementById("contract-value");
+valueInput.addEventListener("input", function () {
+  valueInput.value = valueInput.value.replace(/[^0-9]/g, "");
+});
+
+// Receipts drawer: VIEW/HIDE toggles the side window; button label flips with it.
+const drawer = document.getElementById("receipts-drawer");
+const receiptsBtn = document.querySelector('button[data-action="VIEW RECEIPTS"]');
+receiptsBtn.addEventListener("click", function () {
+  const open = drawer.classList.toggle("open");
+  receiptsBtn.textContent = open ? "HIDE RECEIPTS" : "VIEW RECEIPTS";
+  document.getElementById("last-action").textContent = open ? "SHOW RECEIPTS" : "HIDE RECEIPTS";
+});
+
+// Help modal: HELP opens it; CLOSE HELP or the backdrop dismisses it.
+const helpModal = document.getElementById("help-modal");
+const helpBtn = document.querySelector('button[data-action="HELP"]');
+helpBtn.addEventListener("click", function () {
+  helpModal.classList.add("open");
+});
+helpModal.querySelector("[data-close-help]").addEventListener("click", function () {
+  helpModal.classList.remove("open");
+});
+helpModal.addEventListener("click", function (e) {
+  if (e.target === helpModal) {
+    helpModal.classList.remove("open");
+  }
+});
+
+// Echo behaviour: buttons record the last press; LOAD binds the current value.
+document.querySelectorAll("button[data-action]").forEach(function (btn) {
+  btn.addEventListener("click", function () {
+    let action = btn.dataset.action;
+    if (action === "LOAD NEXT CONTRACT") {
+      action = "LOAD NEXT CONTRACT (value=" + (valueInput.value || "0") + ")";
+    }
+    document.getElementById("last-action").textContent = action;
+  });
+});
+
+// Session run clock: ticks once per second from UI open.
+const clockEl = document.getElementById("run-clock");
+let runSec = 0;
+setInterval(function () {
+  runSec = runSec + 1;
+  const h = String(Math.floor(runSec / 3600)).padStart(2, "0");
+  const m = String(Math.floor((runSec % 3600) / 60)).padStart(2, "0");
+  const s = String(runSec % 60).padStart(2, "0");
+  clockEl.textContent = h + ":" + m + ":" + s;
+}, 1000);
+</script>
+
+</body>
+</html>
