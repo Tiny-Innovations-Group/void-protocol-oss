@@ -3365,6 +3365,50 @@
       "created_at": "2026-09-13T13:53:09.833504+01:00",
       "updated_at": "2026-09-13T13:53:09.833504+01:00",
       "metadata_json": "{\"branch\":\"void_142_part1\",\"commit\":\"6e63841\",\"confidence\":90,\"files\":[\"ground-station/ui/main.cpp\",\"ground-station/ui/proc_manager.cpp\"]}"
+    },
+    {
+      "id": 307,
+      "change_id": "2fbf9fa8-e6f1-4646-9af6-78c4401d1fb3",
+      "node_type": "option",
+      "title": "Receipts wrap: hard char-width wrap at ~60 chars",
+      "description": null,
+      "status": "pending",
+      "created_at": "2026-09-13T14:07:45.244097+01:00",
+      "updated_at": "2026-09-13T14:07:45.244097+01:00",
+      "metadata_json": "{\"branch\":\"void_142_part1\",\"confidence\":15}"
+    },
+    {
+      "id": 308,
+      "change_id": "8851e0f9-70e7-4985-9180-f17c51e4aab6",
+      "node_type": "option",
+      "title": "Receipts wrap: two indented lines (payment_id / tx_hash+status) — operator pick",
+      "description": null,
+      "status": "pending",
+      "created_at": "2026-09-13T14:07:45.273348+01:00",
+      "updated_at": "2026-09-13T14:07:45.273348+01:00",
+      "metadata_json": "{\"branch\":\"void_142_part1\",\"confidence\":90}"
+    },
+    {
+      "id": 309,
+      "change_id": "783ca2bb-2290-44ae-b7f6-afbcc020906b",
+      "node_type": "decision",
+      "title": "Two-line receipts + wrap_text(width=72) on NEXT QUERY + CONTRACT VALUE removed entirely",
+      "description": null,
+      "status": "pending",
+      "created_at": "2026-09-13T14:07:45.300019+01:00",
+      "updated_at": "2026-09-13T14:07:45.300019+01:00",
+      "metadata_json": "{\"branch\":\"void_142_part1\",\"confidence\":90}"
+    },
+    {
+      "id": 310,
+      "change_id": "6d772e37-8325-430d-909e-3e3b765c2b45",
+      "node_type": "action",
+      "title": "VOID-142 cleanup landed (wraps + value removal)",
+      "description": null,
+      "status": "pending",
+      "created_at": "2026-09-13T14:07:45.341887+01:00",
+      "updated_at": "2026-09-13T14:07:45.341887+01:00",
+      "metadata_json": "{\"branch\":\"void_142_part1\",\"commit\":\"b5dc412\",\"confidence\":90,\"files\":[\"ground-station/ui/main.cpp\"]}"
     }
   ],
   "edges": [
@@ -7074,6 +7118,72 @@
       "weight": 1.0,
       "rationale": "executed",
       "created_at": "2026-09-13T13:53:09.934039+01:00"
+    },
+    {
+      "id": 338,
+      "from_node_id": 284,
+      "to_node_id": 307,
+      "from_change_id": "a2a74fa0-6f12-40d7-9088-2abafb5ad2e4",
+      "to_change_id": "2fbf9fa8-e6f1-4646-9af6-78c4401d1fb3",
+      "edge_type": "leads_to",
+      "weight": 1.0,
+      "rationale": "approach",
+      "created_at": "2026-09-13T14:07:45.353745+01:00"
+    },
+    {
+      "id": 339,
+      "from_node_id": 284,
+      "to_node_id": 308,
+      "from_change_id": "a2a74fa0-6f12-40d7-9088-2abafb5ad2e4",
+      "to_change_id": "8851e0f9-70e7-4985-9180-f17c51e4aab6",
+      "edge_type": "leads_to",
+      "weight": 1.0,
+      "rationale": "approach (chosen)",
+      "created_at": "2026-09-13T14:07:54.594159+01:00"
+    },
+    {
+      "id": 340,
+      "from_node_id": 308,
+      "to_node_id": 309,
+      "from_change_id": "8851e0f9-70e7-4985-9180-f17c51e4aab6",
+      "to_change_id": "783ca2bb-2290-44ae-b7f6-afbcc020906b",
+      "edge_type": "leads_to",
+      "weight": 1.0,
+      "rationale": "chosen",
+      "created_at": "2026-09-13T14:07:54.604779+01:00"
+    },
+    {
+      "id": 341,
+      "from_node_id": 307,
+      "to_node_id": 309,
+      "from_change_id": "2fbf9fa8-e6f1-4646-9af6-78c4401d1fb3",
+      "to_change_id": "783ca2bb-2290-44ae-b7f6-afbcc020906b",
+      "edge_type": "leads_to",
+      "weight": 1.0,
+      "rationale": "rejected",
+      "created_at": "2026-09-13T14:07:54.615210+01:00"
+    },
+    {
+      "id": 342,
+      "from_node_id": 289,
+      "to_node_id": 310,
+      "from_change_id": "09d048c2-b09c-4b5a-817c-357f4077e07e",
+      "to_change_id": "6d772e37-8325-430d-909e-3e3b765c2b45",
+      "edge_type": "leads_to",
+      "weight": 1.0,
+      "rationale": "stage-1 implementation",
+      "created_at": "2026-09-13T14:07:54.625556+01:00"
+    },
+    {
+      "id": 343,
+      "from_node_id": 309,
+      "to_node_id": 310,
+      "from_change_id": "783ca2bb-2290-44ae-b7f6-afbcc020906b",
+      "to_change_id": "6d772e37-8325-430d-909e-3e3b765c2b45",
+      "edge_type": "leads_to",
+      "weight": 1.0,
+      "rationale": "executed",
+      "created_at": "2026-09-13T14:07:54.635358+01:00"
     }
   ]
 }

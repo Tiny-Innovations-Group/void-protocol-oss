@@ -1,5 +1,13 @@
 [
   {
+    "hash": "b5dc41213fb921381d109c4b02c22ccd6c39ae6a",
+    "short_hash": "b5dc412",
+    "author": "director-TIG",
+    "date": "2026-09-13T14:07:45+01:00",
+    "message": "VOID-142 cleanup: two-line receipts wrap, wrapped NEXT QUERY, drop CONTRACT VALUE\n\n- VIEW RECEIPTS: two indented lines per record (payment_id on line 1,\n  tx_hash + status on line 2) — deterministic wrap, no mid-field\n  breaks. Bounded writes with explicit NUL placement, sized for the\n  long form.\n- NEXT QUERY (raw): new wrap_text helper inserts newline BEFORE a\n  >72-char token run (hard-breaks only >width tokens). Preview box\n  height SC(56) so 2-3 wrapped lines are readable. Executed ring\n  stays single-line.\n- CONTRACT VALUE removed from EDIT CONTRACT — operator-confirmed\n  there is no value sent with forge create. Deletes the input and\n  g_contract_value; digit_filter removed (only use). address_filter\n  stays for escrow edit.\n\nClean -Werror build, 41/41 ctest.",
+    "files_changed": 1
+  },
+  {
     "hash": "6e63841e69dcb1e5cb9a2ee1cef6db4e8f200198",
     "short_hash": "6e63841",
     "author": "director-TIG",
