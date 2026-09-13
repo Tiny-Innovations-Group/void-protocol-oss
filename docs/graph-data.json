@@ -3288,6 +3288,83 @@
       "created_at": "2026-09-13T13:24:06.579266+01:00",
       "updated_at": "2026-09-13T13:24:06.579266+01:00",
       "metadata_json": "{\"branch\":\"void_142_part1\",\"commit\":\"174f445\",\"confidence\":90,\"files\":[\"ground-station/ui/main.cpp\",\"ground-station/ui/proc_manager.cpp\"]}"
+    },
+    {
+      "id": 300,
+      "change_id": "e7a95c55-d253-4642-9f57-f613f0b96618",
+      "node_type": "option",
+      "title": "SNAP: true video-mode fullscreen via glfwSetWindowMonitor",
+      "description": null,
+      "status": "pending",
+      "created_at": "2026-09-13T13:53:09.665051+01:00",
+      "updated_at": "2026-09-13T13:53:09.665051+01:00",
+      "metadata_json": "{\"branch\":\"void_142_part1\",\"confidence\":40}"
+    },
+    {
+      "id": 301,
+      "change_id": "1752786f-6e9b-49cb-9935-4036f57ce92e",
+      "node_type": "option",
+      "title": "SNAP: windowed maximize + uniform scale (geo+fonts)",
+      "description": null,
+      "status": "pending",
+      "created_at": "2026-09-13T13:53:09.693346+01:00",
+      "updated_at": "2026-09-13T13:53:09.693346+01:00",
+      "metadata_json": "{\"branch\":\"void_142_part1\",\"confidence\":90}"
+    },
+    {
+      "id": 302,
+      "change_id": "c411a4b5-d5ed-425d-b0e9-7d5be7c98c1c",
+      "node_type": "decision",
+      "title": "SNAP = windowed maximize + uniform scale; 4-column Panel 4 row; font scale via io.FontGlobalScale",
+      "description": null,
+      "status": "pending",
+      "created_at": "2026-09-13T13:53:09.718100+01:00",
+      "updated_at": "2026-09-13T13:53:09.718100+01:00",
+      "metadata_json": "{\"branch\":\"void_142_part1\",\"confidence\":90}"
+    },
+    {
+      "id": 303,
+      "change_id": "4f27c287-f7a5-4aa1-96a2-77ccba81ee7b",
+      "node_type": "option",
+      "title": "Raw query: preview text duplicated in main.cpp (drift risk)",
+      "description": null,
+      "status": "pending",
+      "created_at": "2026-09-13T13:53:09.744494+01:00",
+      "updated_at": "2026-09-13T13:53:09.744494+01:00",
+      "metadata_json": "{\"branch\":\"void_142_part1\",\"confidence\":20}"
+    },
+    {
+      "id": 304,
+      "change_id": "88217384-c061-49b5-9255-eee65e0a3045",
+      "node_type": "option",
+      "title": "Raw query: forge argv exportable statics → preview never drifts",
+      "description": null,
+      "status": "pending",
+      "created_at": "2026-09-13T13:53:09.769140+01:00",
+      "updated_at": "2026-09-13T13:53:09.769140+01:00",
+      "metadata_json": "{\"branch\":\"void_142_part1\",\"confidence\":90}"
+    },
+    {
+      "id": 305,
+      "change_id": "415bb3ea-243c-48ee-a42e-8d5ebf4bf275",
+      "node_type": "decision",
+      "title": "forge statics shared; preview box + executed ring (tag cmd)",
+      "description": null,
+      "status": "pending",
+      "created_at": "2026-09-13T13:53:09.793776+01:00",
+      "updated_at": "2026-09-13T13:53:09.793776+01:00",
+      "metadata_json": "{\"branch\":\"void_142_part1\",\"confidence\":90}"
+    },
+    {
+      "id": 306,
+      "change_id": "de786a1e-c433-4b98-883a-363a9cb3d7dd",
+      "node_type": "action",
+      "title": "VOID-142 SNAP + raw query lines landed",
+      "description": null,
+      "status": "pending",
+      "created_at": "2026-09-13T13:53:09.833504+01:00",
+      "updated_at": "2026-09-13T13:53:09.833504+01:00",
+      "metadata_json": "{\"branch\":\"void_142_part1\",\"commit\":\"6e63841\",\"confidence\":90,\"files\":[\"ground-station/ui/main.cpp\",\"ground-station/ui/proc_manager.cpp\"]}"
     }
   ],
   "edges": [
@@ -6876,6 +6953,127 @@
       "weight": 1.0,
       "rationale": "executed",
       "created_at": "2026-09-13T13:24:15.024370+01:00"
+    },
+    {
+      "id": 327,
+      "from_node_id": 284,
+      "to_node_id": 300,
+      "from_change_id": "a2a74fa0-6f12-40d7-9088-2abafb5ad2e4",
+      "to_change_id": "e7a95c55-d253-4642-9f57-f613f0b96618",
+      "edge_type": "leads_to",
+      "weight": 1.0,
+      "rationale": "approach",
+      "created_at": "2026-09-13T13:53:09.842668+01:00"
+    },
+    {
+      "id": 328,
+      "from_node_id": 284,
+      "to_node_id": 301,
+      "from_change_id": "a2a74fa0-6f12-40d7-9088-2abafb5ad2e4",
+      "to_change_id": "1752786f-6e9b-49cb-9935-4036f57ce92e",
+      "edge_type": "leads_to",
+      "weight": 1.0,
+      "rationale": "approach (chosen)",
+      "created_at": "2026-09-13T13:53:09.852849+01:00"
+    },
+    {
+      "id": 329,
+      "from_node_id": 301,
+      "to_node_id": 302,
+      "from_change_id": "1752786f-6e9b-49cb-9935-4036f57ce92e",
+      "to_change_id": "c411a4b5-d5ed-425d-b0e9-7d5be7c98c1c",
+      "edge_type": "leads_to",
+      "weight": 1.0,
+      "rationale": "chosen",
+      "created_at": "2026-09-13T13:53:09.862138+01:00"
+    },
+    {
+      "id": 330,
+      "from_node_id": 300,
+      "to_node_id": 302,
+      "from_change_id": "e7a95c55-d253-4642-9f57-f613f0b96618",
+      "to_change_id": "c411a4b5-d5ed-425d-b0e9-7d5be7c98c1c",
+      "edge_type": "leads_to",
+      "weight": 1.0,
+      "rationale": "rejected",
+      "created_at": "2026-09-13T13:53:09.871669+01:00"
+    },
+    {
+      "id": 331,
+      "from_node_id": 284,
+      "to_node_id": 303,
+      "from_change_id": "a2a74fa0-6f12-40d7-9088-2abafb5ad2e4",
+      "to_change_id": "4f27c287-f7a5-4aa1-96a2-77ccba81ee7b",
+      "edge_type": "leads_to",
+      "weight": 1.0,
+      "rationale": "approach",
+      "created_at": "2026-09-13T13:53:09.880458+01:00"
+    },
+    {
+      "id": 332,
+      "from_node_id": 284,
+      "to_node_id": 304,
+      "from_change_id": "a2a74fa0-6f12-40d7-9088-2abafb5ad2e4",
+      "to_change_id": "88217384-c061-49b5-9255-eee65e0a3045",
+      "edge_type": "leads_to",
+      "weight": 1.0,
+      "rationale": "approach (chosen)",
+      "created_at": "2026-09-13T13:53:09.889606+01:00"
+    },
+    {
+      "id": 333,
+      "from_node_id": 304,
+      "to_node_id": 305,
+      "from_change_id": "88217384-c061-49b5-9255-eee65e0a3045",
+      "to_change_id": "415bb3ea-243c-48ee-a42e-8d5ebf4bf275",
+      "edge_type": "leads_to",
+      "weight": 1.0,
+      "rationale": "chosen",
+      "created_at": "2026-09-13T13:53:09.898859+01:00"
+    },
+    {
+      "id": 334,
+      "from_node_id": 303,
+      "to_node_id": 305,
+      "from_change_id": "4f27c287-f7a5-4aa1-96a2-77ccba81ee7b",
+      "to_change_id": "415bb3ea-243c-48ee-a42e-8d5ebf4bf275",
+      "edge_type": "leads_to",
+      "weight": 1.0,
+      "rationale": "rejected",
+      "created_at": "2026-09-13T13:53:09.907709+01:00"
+    },
+    {
+      "id": 335,
+      "from_node_id": 289,
+      "to_node_id": 306,
+      "from_change_id": "09d048c2-b09c-4b5a-817c-357f4077e07e",
+      "to_change_id": "de786a1e-c433-4b98-883a-363a9cb3d7dd",
+      "edge_type": "leads_to",
+      "weight": 1.0,
+      "rationale": "stage-1 implementation",
+      "created_at": "2026-09-13T13:53:09.916394+01:00"
+    },
+    {
+      "id": 336,
+      "from_node_id": 302,
+      "to_node_id": 306,
+      "from_change_id": "c411a4b5-d5ed-425d-b0e9-7d5be7c98c1c",
+      "to_change_id": "de786a1e-c433-4b98-883a-363a9cb3d7dd",
+      "edge_type": "leads_to",
+      "weight": 1.0,
+      "rationale": "executed",
+      "created_at": "2026-09-13T13:53:09.925677+01:00"
+    },
+    {
+      "id": 337,
+      "from_node_id": 305,
+      "to_node_id": 306,
+      "from_change_id": "415bb3ea-243c-48ee-a42e-8d5ebf4bf275",
+      "to_change_id": "de786a1e-c433-4b98-883a-363a9cb3d7dd",
+      "edge_type": "leads_to",
+      "weight": 1.0,
+      "rationale": "executed",
+      "created_at": "2026-09-13T13:53:09.934039+01:00"
     }
   ]
 }

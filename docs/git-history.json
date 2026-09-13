@@ -1,5 +1,13 @@
 [
   {
+    "hash": "6e63841e69dcb1e5cb9a2ee1cef6db4e8f200198",
+    "short_hash": "6e63841",
+    "author": "director-TIG",
+    "date": "2026-09-13T13:53:09+01:00",
+    "message": "VOID-142: SNAP FULL (maximize + uniform scale) + raw forge query lines in EDIT CONTRACT\n\nSNAP FULL (smaller-screen readability):\n- glfwMaximizeWindow + uniform render scale: g_scale over all frozen\n  geometry (begin_panel rects, markers, buttons, side panel, error\n  strip, inner log heights, help modal) and io.FontGlobalScale. Frozen\n  layout invariant at scale 1.0 — PORT_SPEC parity preserved.\n- Base width tracks the side panel: SHOW/HIDE PANEL while snapped\n  recomputes scale (1280 console-only ↔ 1760 with panel).\n- Panel 4 row 3 becomes four columns: SEND ACK | SHOW/HIDE PANEL |\n  HELP | SNAP↔RESTORE. Window stays non-resizable; toggle is explicit.\n\nRaw query visibility (EDIT CONTRACT tab, per operator request):\n- forge argv pieces moved to exportable statics in proc_manager\n  (kForgeArgv); proc_forge_cmdline() assembles a single-line preview —\n  preview == executed command, no drift.\n- NEXT QUERY (raw) preview box + EXECUTED QUERIES (raw) ring: LOAD\n  pushes the executed line; harvest pushes DEPLOY OK/FAIL. Read-only\n  text boxes, newest-at-bottom, bounded ring.\n\nClean -Werror build; 41/41 ctest; unconnected + live-stack smokes.",
+    "files_changed": 3
+  },
+  {
     "hash": "174f4451748e2afc94c7f866a757e4983e5f4a3b",
     "short_hash": "174f445",
     "author": "director-TIG",
