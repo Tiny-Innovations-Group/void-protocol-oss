@@ -1,5 +1,29 @@
 [
   {
+    "hash": "667904ee661d3e74f579cb9516ec754fd624de41",
+    "short_hash": "667904e",
+    "author": "director-TIG",
+    "date": "2026-09-13T12:51:51+01:00",
+    "message": "VOID-142 1c: live panels — status/chain pollers, receipts tailer, ring logs\n\n- ui/log_store.h: bounded ring of fixed-width lines; single-threaded\n  render, no locking. Child-pipe line assembly drains into HTTP /\n  blockchain / error rings; settlement keywords mirror to Panel 3,\n  warn/error keywords to the error strip.\n- ui/http_poller.{h,cpp}: bounded raw-socket GET/POST-JSON, mirrors\n  bouncer's VOID-138 transport (timeouts, no silent truncation).\n- ui/service_poller.{h,cpp}: 2 Hz GET /api/v1/status → Panel 2 fields;\n  eth_blockNumber → Panel 3 Block/status. Bounded JSON scans.\n- ui/receipts_tailer.{h,cpp}: reads receipts.json (env or repo-root\n  anchored) with latest-per-key upsert; drawer renders bounded table,\n  Settlements counter. api/v1/status smoke against the live stack\n  confirms chain_enabled:true + dispatched receipts from the bench file.\n- Clean -Werror build; ctest 41/41; unconnected + live-stack smokes.",
+    "files_changed": 9
+  },
+  {
+    "hash": "d55cae764d85b1d9a0c864f2a090dae4d88d4230",
+    "short_hash": "d55cae7",
+    "author": "director-TIG",
+    "date": "2026-09-13T12:22:05+01:00",
+    "message": "VOID-142 1b: UI process manager — anvil/gateway spawn, START/STOP, LOAD NEXT CONTRACT\n\n- ui/proc_manager.{h,cpp}: posix_spawn children on own process groups\n  (group-kill reaches go-run grandchildren), non-blocking log pipes,\n  forge create deploy + 'Deployed to' bounded parse, repo-root anchor\n  via .git walk-up, SIGPIPE ignored. No heap/std::string/VLA; static\n  envp builder avoids setenv. Win32 stubs keep the target portable.\n- main.cpp: START (anvil→gateway with VOID_ALPHA_PLAINTEXT +\n  VOID_ESCROW_ADDRESS), STOP (SIGTERM→SIGKILL escalate), LOAD NEXT\n  CONTRACT (deploy + live re-point, echoes address), EXIT (graceful\n  stop_all → window close). Panel 3 Contract field live.\n- macOS 26: addchdir (renamed from addchdir_np) behind __APPLE__.\n- Clean -Werror build; ground-station ctest 41/41; 5s runtime smoke.",
+    "files_changed": 4
+  },
+  {
+    "hash": "674305eeb9c9b7fb0c83fcaaebd21478faced20a",
+    "short_hash": "674305e",
+    "author": "director-TIG",
+    "date": "2026-09-13T12:12:44+01:00",
+    "message": "VOID-142 1a: gateway GET /api/v1/status + counters + receipt CountByStatus\n\nRead-only operator-console status for the ImGui ground station (Panel 2):\n- handlers/status.go: uptime, packets_in, sig_verify_ok/fail,\n  intents_queued, receipts_pending/dispatched, chain_enabled,\n  escrow_address. Monotonic atomics at the exact ingest.go log sites.\n- receipt.Store.CountByStatus(): latest-line-per-dedup-key split.\n- Route wired in cmd/server/main.go; EscrowAddress set at chain init.\n- Tests: 3 handler (defaults / counters-reflect-ingest incl. tampered\n  sig / receipt counts) + 3 store CountByStatus. go test ./... green;\n  live smoke 200 in parse-only mode.",
+    "files_changed": 6
+  },
+  {
     "hash": "b4e0531ddedbf1834e5c829264b4bff82865ba9b",
     "short_hash": "b4e0531",
     "author": "director-TIG",

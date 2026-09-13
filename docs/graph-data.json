@@ -3112,6 +3112,116 @@
       "created_at": "2026-09-13T11:35:02.584940+01:00",
       "updated_at": "2026-09-13T11:35:02.584940+01:00",
       "metadata_json": "{\"branch\":\"void-022-heartbeat\",\"commit\":\"b4e0531\",\"confidence\":95}"
+    },
+    {
+      "id": 284,
+      "change_id": "a2a74fa0-6f12-40d7-9088-2abafb5ad2e4",
+      "node_type": "goal",
+      "title": "Wire VOID-141 ImGui ground-station console to live flat-sat services (VOID-142)",
+      "description": null,
+      "status": "pending",
+      "created_at": "2026-09-13T12:07:36.875144+01:00",
+      "updated_at": "2026-09-13T12:07:36.875144+01:00",
+      "metadata_json": "{\"branch\":\"void_142_part1\",\"confidence\":90,\"prompt\":\"We need to do the work now for linking up our IMGUI of our ground station to the services that are required. Prior to this we need to change our ticket in Notion and then we'll need to create a new ticket in Notion for wiring up the ground station. Notion actions via the MCP are handled by the GLM Scout agent. So let's build a plan, recon the information and then we can kick off the wiring of our IMGUI with our actual services.\"}"
+    },
+    {
+      "id": 285,
+      "change_id": "75153554-e899-422a-82e0-c3351dcb05f6",
+      "node_type": "option",
+      "title": "Umbrella: keep VOID-141 open In progress as parent; wiring ticket nested, closing wiring closes 141",
+      "description": null,
+      "status": "pending",
+      "created_at": "2026-09-13T12:07:40.979588+01:00",
+      "updated_at": "2026-09-13T12:07:40.979588+01:00",
+      "metadata_json": "{\"branch\":\"void_142_part1\",\"confidence\":40}"
+    },
+    {
+      "id": 286,
+      "change_id": "d77aa869-2e17-46cd-afd2-c37faaaeecfa",
+      "node_type": "option",
+      "title": "Split: backfill VOID-141 in Notion as Done (stage-1 port evidence); wiring becomes new ticket VOID-142 at Journey Order 6.6",
+      "description": null,
+      "status": "pending",
+      "created_at": "2026-09-13T12:07:41.001304+01:00",
+      "updated_at": "2026-09-13T12:07:41.001304+01:00",
+      "metadata_json": "{\"branch\":\"void_142_part1\",\"confidence\":85}"
+    },
+    {
+      "id": 287,
+      "change_id": "e48178d7-aa87-45e2-acc2-080eeba05650",
+      "node_type": "option",
+      "title": "Include CONTRACT VALUE firmware pass-through in wiring scope (seller serial command channel)",
+      "description": null,
+      "status": "pending",
+      "created_at": "2026-09-13T12:07:41.018507+01:00",
+      "updated_at": "2026-09-13T12:07:41.018507+01:00",
+      "metadata_json": "{\"branch\":\"void_142_part1\",\"confidence\":30}"
+    },
+    {
+      "id": 288,
+      "change_id": "e14bdb87-0e19-4646-9a6d-873076505d7b",
+      "node_type": "decision",
+      "title": "Split tickets: VOID-141 backfilled Done in Notion (it never existed there — recon 2026-09-13); VOID-142 created at JO 6.6 In progress, owns all live-data wiring",
+      "description": null,
+      "status": "pending",
+      "created_at": "2026-09-13T12:07:47.470928+01:00",
+      "updated_at": "2026-09-13T12:07:47.470928+01:00",
+      "metadata_json": "{\"branch\":\"void_142_part1\",\"confidence\":90}"
+    },
+    {
+      "id": 289,
+      "change_id": "09d048c2-b09c-4b5a-817c-357f4077e07e",
+      "node_type": "decision",
+      "title": "Stage order per user: Stage 1 = gateway + blockchain + contract loading (forge create per README_GATEWAY.md), Stage 2 = serial interface after confirmation. CONTRACT VALUE plumbing deferred (input cosmetic at default 500)",
+      "description": null,
+      "status": "pending",
+      "created_at": "2026-09-13T12:07:47.491622+01:00",
+      "updated_at": "2026-09-13T12:07:47.491622+01:00",
+      "metadata_json": "{\"branch\":\"void_142_part1\",\"confidence\":90,\"prompt\":\"Let's settle fast on just wiring the Go Gateway and so we will need to link that in as well as let's wire in the blockchain as well and wire in the loading of the contract. You should be able to find this information inside the readme_gateway.md. Once we confirm this then we can move on to wiring the serial interface. Please update deciduous on these changes and decisions as well as update the notion ticket.\"}"
+    },
+    {
+      "id": 290,
+      "change_id": "14247170-7428-4f63-a9b6-b7c1271b83d3",
+      "node_type": "action",
+      "title": "Tracking landed: PR #21 raised (void-022-heartbeat, VOID-022 advances + VOID-141 stage-1 port); branch void_142_part1 created; Notion VOID-141 (Done, JO 6.5) + VOID-142 (In progress, JO 6.6) created via GLM Scout; journey doc v18 (row 6.5 struck, row 6.6 inserted)",
+      "description": null,
+      "status": "pending",
+      "created_at": "2026-09-13T12:07:51.732504+01:00",
+      "updated_at": "2026-09-13T12:07:51.732504+01:00",
+      "metadata_json": "{\"branch\":\"void_142_part1\",\"confidence\":90,\"files\":[\"docs/journey_to_hab_plain_text.md\"]}"
+    },
+    {
+      "id": 291,
+      "change_id": "ca997e50-f5a1-4bb5-8a3e-184d209869ef",
+      "node_type": "action",
+      "title": "VOID-142 1a landed: gateway GET /api/v1/status + counters + CountByStatus (6 new Go tests, live smoke 200)",
+      "description": null,
+      "status": "pending",
+      "created_at": "2026-09-13T12:12:44.565200+01:00",
+      "updated_at": "2026-09-13T12:12:44.565200+01:00",
+      "metadata_json": "{\"branch\":\"void_142_part1\",\"commit\":\"674305e\",\"confidence\":90,\"files\":[\"gateway/internal/api/handlers/status.go\",\"gateway/internal/core/receipt/store.go\"]}"
+    },
+    {
+      "id": 292,
+      "change_id": "6a0187de-7655-48fb-95ea-d73e9ed604a4",
+      "node_type": "action",
+      "title": "VOID-142 1b landed: UI process manager (posix_spawn, group kill, forge deploy + re-point, EXIT graceful)",
+      "description": null,
+      "status": "pending",
+      "created_at": "2026-09-13T12:22:05.431538+01:00",
+      "updated_at": "2026-09-13T12:22:05.431538+01:00",
+      "metadata_json": "{\"branch\":\"void_142_part1\",\"commit\":\"d55cae7\",\"confidence\":90,\"files\":[\"ground-station/ui/proc_manager.cpp\",\"ground-station/ui/proc_manager.h\"]}"
+    },
+    {
+      "id": 293,
+      "change_id": "9d33a902-4ac3-439b-910e-0860706c1123",
+      "node_type": "action",
+      "title": "VOID-142 1c landed: live Panels 2/3 + receipts drawer (poller/tailer/ring) — Status/Block/Contract/Settlements live against external stack",
+      "description": null,
+      "status": "pending",
+      "created_at": "2026-09-13T12:51:51.897219+01:00",
+      "updated_at": "2026-09-13T12:51:51.897219+01:00",
+      "metadata_json": "{\"branch\":\"void_142_part1\",\"commit\":\"667904e\",\"confidence\":90,\"files\":[\"ground-station/ui/service_poller.cpp\",\"ground-station/ui/receipts_tailer.cpp\"]}"
     }
   ],
   "edges": [
@@ -6491,6 +6601,127 @@
       "weight": 1.0,
       "rationale": "Committed",
       "created_at": "2026-09-13T11:35:05.988213+01:00"
+    },
+    {
+      "id": 308,
+      "from_node_id": 284,
+      "to_node_id": 285,
+      "from_change_id": "a2a74fa0-6f12-40d7-9088-2abafb5ad2e4",
+      "to_change_id": "75153554-e899-422a-82e0-c3351dcb05f6",
+      "edge_type": "leads_to",
+      "weight": 1.0,
+      "rationale": "approach considered",
+      "created_at": "2026-09-13T12:07:56.900471+01:00"
+    },
+    {
+      "id": 309,
+      "from_node_id": 284,
+      "to_node_id": 286,
+      "from_change_id": "a2a74fa0-6f12-40d7-9088-2abafb5ad2e4",
+      "to_change_id": "d77aa869-2e17-46cd-afd2-c37faaaeecfa",
+      "edge_type": "leads_to",
+      "weight": 1.0,
+      "rationale": "approach considered",
+      "created_at": "2026-09-13T12:07:56.911742+01:00"
+    },
+    {
+      "id": 310,
+      "from_node_id": 284,
+      "to_node_id": 287,
+      "from_change_id": "a2a74fa0-6f12-40d7-9088-2abafb5ad2e4",
+      "to_change_id": "e48178d7-aa87-45e2-acc2-080eeba05650",
+      "edge_type": "leads_to",
+      "weight": 1.0,
+      "rationale": "scope option considered",
+      "created_at": "2026-09-13T12:07:56.920567+01:00"
+    },
+    {
+      "id": 311,
+      "from_node_id": 286,
+      "to_node_id": 288,
+      "from_change_id": "d77aa869-2e17-46cd-afd2-c37faaaeecfa",
+      "to_change_id": "e14bdb87-0e19-4646-9a6d-873076505d7b",
+      "edge_type": "leads_to",
+      "weight": 1.0,
+      "rationale": "chosen",
+      "created_at": "2026-09-13T12:07:56.928633+01:00"
+    },
+    {
+      "id": 312,
+      "from_node_id": 285,
+      "to_node_id": 288,
+      "from_change_id": "75153554-e899-422a-82e0-c3351dcb05f6",
+      "to_change_id": "e14bdb87-0e19-4646-9a6d-873076505d7b",
+      "edge_type": "leads_to",
+      "weight": 1.0,
+      "rationale": "rejected: muddier AC, contradicts split precedent (VOID-135)",
+      "created_at": "2026-09-13T12:07:56.935896+01:00"
+    },
+    {
+      "id": 313,
+      "from_node_id": 287,
+      "to_node_id": 289,
+      "from_change_id": "e48178d7-aa87-45e2-acc2-080eeba05650",
+      "to_change_id": "09d048c2-b09c-4b5a-817c-357f4077e07e",
+      "edge_type": "leads_to",
+      "weight": 1.0,
+      "rationale": "deferred: no bouncer CLI path exists today",
+      "created_at": "2026-09-13T12:07:56.942544+01:00"
+    },
+    {
+      "id": 314,
+      "from_node_id": 288,
+      "to_node_id": 290,
+      "from_change_id": "e14bdb87-0e19-4646-9a6d-873076505d7b",
+      "to_change_id": "14247170-7428-4f63-a9b6-b7c1271b83d3",
+      "edge_type": "leads_to",
+      "weight": 1.0,
+      "rationale": "executed",
+      "created_at": "2026-09-13T12:07:56.949849+01:00"
+    },
+    {
+      "id": 315,
+      "from_node_id": 289,
+      "to_node_id": 290,
+      "from_change_id": "09d048c2-b09c-4b5a-817c-357f4077e07e",
+      "to_change_id": "14247170-7428-4f63-a9b6-b7c1271b83d3",
+      "edge_type": "leads_to",
+      "weight": 1.0,
+      "rationale": "executed",
+      "created_at": "2026-09-13T12:07:56.956983+01:00"
+    },
+    {
+      "id": 316,
+      "from_node_id": 289,
+      "to_node_id": 291,
+      "from_change_id": "09d048c2-b09c-4b5a-817c-357f4077e07e",
+      "to_change_id": "ca997e50-f5a1-4bb5-8a3e-184d209869ef",
+      "edge_type": "leads_to",
+      "weight": 1.0,
+      "rationale": "stage-1 implementation step",
+      "created_at": "2026-09-13T12:12:48.575854+01:00"
+    },
+    {
+      "id": 317,
+      "from_node_id": 289,
+      "to_node_id": 292,
+      "from_change_id": "09d048c2-b09c-4b5a-817c-357f4077e07e",
+      "to_change_id": "6a0187de-7655-48fb-95ea-d73e9ed604a4",
+      "edge_type": "leads_to",
+      "weight": 1.0,
+      "rationale": "stage-1 implementation step",
+      "created_at": "2026-09-13T12:22:10.331287+01:00"
+    },
+    {
+      "id": 318,
+      "from_node_id": 289,
+      "to_node_id": 293,
+      "from_change_id": "09d048c2-b09c-4b5a-817c-357f4077e07e",
+      "to_change_id": "9d33a902-4ac3-439b-910e-0860706c1123",
+      "edge_type": "leads_to",
+      "weight": 1.0,
+      "rationale": "stage-1 implementation",
+      "created_at": "2026-09-13T12:51:57.175182+01:00"
     }
   ]
 }
