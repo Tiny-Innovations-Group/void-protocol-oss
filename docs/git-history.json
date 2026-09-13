@@ -1,5 +1,13 @@
 [
   {
+    "hash": "174f4451748e2afc94c7f866a757e4983e5f4a3b",
+    "short_hash": "174f445",
+    "author": "director-TIG",
+    "date": "2026-09-13T13:24:06+01:00",
+    "message": "VOID-142 fix: START auto-chain, async deploy thread, side-panel tabs, errors filter\n\nOperator-reported bug: single START click brought up Panel 3 but not\nPanel 2 — the gateway spawn hard-gates on an empty escrow buffer, and\nLOAD only restarts when already running. FIXES:\n- START auto-chain: empty escrow → async deploy → harvest spawns the\n  gateway. One click raises Panels 2+3.\n- Async deploy: std::thread worker runs pure forge spawn/parse\n  (proc_forge_deploy); render thread owns anvil/lifecycle and harvests\n  via std::atomic state. render thread no longer freezes on LOAD.\n- Side panel (spots of the old receipts drawer) with TabBar:\n  EDIT CONTRACT (moved CONTRACT VALUE, read-only CURRENT, editable\n  address buffer + APPLY via proc_set_escrow validator, duplicate\n  LOAD NEXT CONTRACT) and VIEW RECEIPTS (upsert table moved as-is).\n  Panel 4 slimmed to run/panel-toggle/help/exit; VIEW button renamed\n  SHOW/HIDE PANEL. Panel 3 Contract stays read-only.\n- Errors tab: ring entries carry a source tag (gw/anvil/ui); ERRORS\n  label row gets ALL | GATEWAY | ANVIL | UI filter buttons, frozen\n  98px strip geometry kept.\n- proc_manager split: forge-only worker + proc_set_escrow validator +\n  proc_gateway_restart helper. Blocking proc_deploy_contract removed.\n- Clean -Werror build; 41/41 ctest; unconnected + live smokes.",
+    "files_changed": 4
+  },
+  {
     "hash": "667904ee661d3e74f579cb9516ec754fd624de41",
     "short_hash": "667904e",
     "author": "director-TIG",

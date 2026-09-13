@@ -3222,6 +3222,72 @@
       "created_at": "2026-09-13T12:51:51.897219+01:00",
       "updated_at": "2026-09-13T12:51:51.897219+01:00",
       "metadata_json": "{\"branch\":\"void_142_part1\",\"commit\":\"667904e\",\"confidence\":90,\"files\":[\"ground-station/ui/service_poller.cpp\",\"ground-station/ui/receipts_tailer.cpp\"]}"
+    },
+    {
+      "id": 294,
+      "change_id": "7a5596ac-bbed-41c6-a2be-cf1e364163a4",
+      "node_type": "option",
+      "title": "Fix: strict escrow gate kept, warn-only echo",
+      "description": null,
+      "status": "pending",
+      "created_at": "2026-09-13T13:24:06.476685+01:00",
+      "updated_at": "2026-09-13T13:24:06.476685+01:00",
+      "metadata_json": "{\"branch\":\"void_142_part1\",\"confidence\":30}"
+    },
+    {
+      "id": 295,
+      "change_id": "59a22c14-df35-42ba-8086-f748733af366",
+      "node_type": "option",
+      "title": "Fix: START auto-chains deploy when escrow empty",
+      "description": null,
+      "status": "pending",
+      "created_at": "2026-09-13T13:24:06.497010+01:00",
+      "updated_at": "2026-09-13T13:24:06.497010+01:00",
+      "metadata_json": "{\"branch\":\"void_142_part1\",\"confidence\":90}"
+    },
+    {
+      "id": 296,
+      "change_id": "fe0ff287-3093-49cf-a8a8-71f1547dfb69",
+      "node_type": "decision",
+      "title": "START auto-chain chosen + async forge on detached std::thread (render thread never blocks) + harvest in tick",
+      "description": null,
+      "status": "pending",
+      "created_at": "2026-09-13T13:24:06.515356+01:00",
+      "updated_at": "2026-09-13T13:24:06.515356+01:00",
+      "metadata_json": "{\"branch\":\"void_142_part1\",\"confidence\":90}"
+    },
+    {
+      "id": 297,
+      "change_id": "aa18612c-6eec-4e22-8a48-91c76d5afdcf",
+      "node_type": "option",
+      "title": "Side panel TabBar with EDIT CONTRACT | VIEW RECEIPTS (address edit + APPLY, moved value, duplicate LOAD)",
+      "description": null,
+      "status": "pending",
+      "created_at": "2026-09-13T13:24:06.532801+01:00",
+      "updated_at": "2026-09-13T13:24:06.532801+01:00",
+      "metadata_json": "{\"branch\":\"void_142_part1\",\"confidence\":90}"
+    },
+    {
+      "id": 298,
+      "change_id": "aa545a91-7d9b-4682-85a3-93f41fedc130",
+      "node_type": "decision",
+      "title": "Side-panel tags: err ring entries tagged gw/anvil/ui, segmented filter buttons (ALL/GATEWAY/ANVIL/UI), geometry frozen",
+      "description": null,
+      "status": "pending",
+      "created_at": "2026-09-13T13:24:06.550669+01:00",
+      "updated_at": "2026-09-13T13:24:06.550669+01:00",
+      "metadata_json": "{\"branch\":\"void_142_part1\",\"confidence\":90}"
+    },
+    {
+      "id": 299,
+      "change_id": "a52799f2-d19e-4395-aa97-b7a9b96055a0",
+      "node_type": "action",
+      "title": "VOID-142 fix landed: auto-chain, async deploy, side panel, errors filter",
+      "description": null,
+      "status": "pending",
+      "created_at": "2026-09-13T13:24:06.579266+01:00",
+      "updated_at": "2026-09-13T13:24:06.579266+01:00",
+      "metadata_json": "{\"branch\":\"void_142_part1\",\"commit\":\"174f445\",\"confidence\":90,\"files\":[\"ground-station/ui/main.cpp\",\"ground-station/ui/proc_manager.cpp\"]}"
     }
   ],
   "edges": [
@@ -6722,6 +6788,94 @@
       "weight": 1.0,
       "rationale": "stage-1 implementation",
       "created_at": "2026-09-13T12:51:57.175182+01:00"
+    },
+    {
+      "id": 319,
+      "from_node_id": 284,
+      "to_node_id": 294,
+      "from_change_id": "a2a74fa0-6f12-40d7-9088-2abafb5ad2e4",
+      "to_change_id": "7a5596ac-bbed-41c6-a2be-cf1e364163a4",
+      "edge_type": "leads_to",
+      "weight": 1.0,
+      "rationale": "fix approach considered",
+      "created_at": "2026-09-13T13:24:14.970386+01:00"
+    },
+    {
+      "id": 320,
+      "from_node_id": 284,
+      "to_node_id": 295,
+      "from_change_id": "a2a74fa0-6f12-40d7-9088-2abafb5ad2e4",
+      "to_change_id": "59a22c14-df35-42ba-8086-f748733af366",
+      "edge_type": "leads_to",
+      "weight": 1.0,
+      "rationale": "fix approach chosen",
+      "created_at": "2026-09-13T13:24:14.981357+01:00"
+    },
+    {
+      "id": 321,
+      "from_node_id": 295,
+      "to_node_id": 296,
+      "from_change_id": "59a22c14-df35-42ba-8086-f748733af366",
+      "to_change_id": "fe0ff287-3093-49cf-a8a8-71f1547dfb69",
+      "edge_type": "leads_to",
+      "weight": 1.0,
+      "rationale": "chosen",
+      "created_at": "2026-09-13T13:24:14.989785+01:00"
+    },
+    {
+      "id": 322,
+      "from_node_id": 294,
+      "to_node_id": 296,
+      "from_change_id": "7a5596ac-bbed-41c6-a2be-cf1e364163a4",
+      "to_change_id": "fe0ff287-3093-49cf-a8a8-71f1547dfb69",
+      "edge_type": "leads_to",
+      "weight": 1.0,
+      "rationale": "rejected: broken UX, gate meaningless",
+      "created_at": "2026-09-13T13:24:14.997388+01:00"
+    },
+    {
+      "id": 323,
+      "from_node_id": 284,
+      "to_node_id": 297,
+      "from_change_id": "a2a74fa0-6f12-40d7-9088-2abafb5ad2e4",
+      "to_change_id": "aa18612c-6eec-4e22-8a48-91c76d5afdcf",
+      "edge_type": "leads_to",
+      "weight": 1.0,
+      "rationale": "layout option (chosen)",
+      "created_at": "2026-09-13T13:24:15.005055+01:00"
+    },
+    {
+      "id": 324,
+      "from_node_id": 289,
+      "to_node_id": 299,
+      "from_change_id": "09d048c2-b09c-4b5a-817c-357f4077e07e",
+      "to_change_id": "a52799f2-d19e-4395-aa97-b7a9b96055a0",
+      "edge_type": "leads_to",
+      "weight": 1.0,
+      "rationale": "stage-1 implementation",
+      "created_at": "2026-09-13T13:24:15.011804+01:00"
+    },
+    {
+      "id": 325,
+      "from_node_id": 296,
+      "to_node_id": 299,
+      "from_change_id": "fe0ff287-3093-49cf-a8a8-71f1547dfb69",
+      "to_change_id": "a52799f2-d19e-4395-aa97-b7a9b96055a0",
+      "edge_type": "leads_to",
+      "weight": 1.0,
+      "rationale": "executed",
+      "created_at": "2026-09-13T13:24:15.018028+01:00"
+    },
+    {
+      "id": 326,
+      "from_node_id": 298,
+      "to_node_id": 299,
+      "from_change_id": "aa545a91-7d9b-4682-85a3-93f41fedc130",
+      "to_change_id": "a52799f2-d19e-4395-aa97-b7a9b96055a0",
+      "edge_type": "leads_to",
+      "weight": 1.0,
+      "rationale": "executed",
+      "created_at": "2026-09-13T13:24:15.024370+01:00"
     }
   ]
 }
