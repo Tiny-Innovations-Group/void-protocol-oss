@@ -183,6 +183,39 @@ int wait_for_anvil(void) {
     return -1;
 }
 
+// forge spawn pieces live as exportable statics so the UI's raw-query
+// preview can never drift from what the worker actually runs (VOID-142).
+char  kForgeProg[]      = "forge";
+char* kForgeArgv[] = {
+    kForgeProg,
+    const_cast<char*>("create"),
+    const_cast<char*>("src/Escrow.sol:Escrow"),
+    const_cast<char*>("--rpc-url"),
+    const_cast<char*>("http://127.0.0.1:8545"),
+    const_cast<char*>("--private-key"),
+    const_cast<char*>("0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80"),
+    const_cast<char*>("--broadcast"),
+    nullptr
+};
+char  kForgeCmdline[512] = "";
+
+void assemble_forge_cmdline(void) {
+    // Single-line join of kForgeArgv for the EDIT CONTRACT preview.
+    std::size_t used = 0;
+    for (char** arg = kForgeArgv; *arg != nullptr; ++arg) {
+        const std::size_t len = std::strlen(*arg);
+        if (used + len + 2 >= sizeof(kForgeCmdline)) {
+            break;
+        }
+        std::memcpy(kForgeCmdline + used, *arg, len);
+        used += len;
+        if (*(arg + 1) != nullptr) {
+            kForgeCmdline[used++] = ' ';
+        }
+    }
+    kForgeCmdline[used] = '\0';
+}
+
 // Byte-scan helper: children of the repo need no <string> — bounded
 // memmem-style search over a bounded buffer.
 char* find_substr(char* hay, const char* needle, const std::size_t haylen) {
@@ -208,7 +241,13 @@ void proc_init(void) {
     // a pipe must not kill the console.
     signal(SIGPIPE, SIG_IGN);
     resolve_repo_root();
+    assemble_forge_cmdline();
     g_inited = true;
+}
+
+const char* proc_forge_cmdline(void) {
+    proc_init();
+    return kForgeCmdline;
 }
 
 const char* proc_repo_root(void) {
@@ -309,17 +348,7 @@ int proc_forge_deploy(char* out_addr, std::size_t out_cap) {
     out_addr[0] = '\0';
     char cwd[1050];
     std::snprintf(cwd, sizeof(cwd), "%s/contracts", g_repo_root);
-    char* const argv[] = {
-        const_cast<char*>("forge"),
-        const_cast<char*>("create"),
-        const_cast<char*>("src/Escrow.sol:Escrow"),
-        const_cast<char*>("--rpc-url"),
-        const_cast<char*>("http://127.0.0.1:8545"),
-        const_cast<char*>("--private-key"),
-        const_cast<char*>("0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80"),
-        const_cast<char*>("--broadcast"),
-        nullptr
-    };
+    char* const* argv = kForgeArgv;
 
     // Blocking pipe read: forge exits, we drain, parse, reap.
     int pipefd[2];

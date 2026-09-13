@@ -33,6 +33,10 @@ void proc_init(void);
 // Repo root containing .git, or "" when not found (paths then fail).
 const char* proc_repo_root(void);
 
+// Single-line raw forge command preview — assembled from the exportable
+// statics the worker spawns with, so preview == executed command.
+const char* proc_forge_cmdline(void);
+
 // Spawn `anvil` (repo-root CWD) and block until 127.0.0.1:8545 accepts
 // a TCP connection (≤5 s). Idempotent: returns 0 immediately when the
 // slot is already running. 0 on success, -1 on failure.

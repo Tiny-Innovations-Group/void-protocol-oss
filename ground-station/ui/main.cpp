@@ -138,6 +138,10 @@ const char* kHelpGate =
     "a full demo pass is one clean A → B → ACK → SETTLE → C → D run.\n"
     "10 consecutive passes = flat-sat alpha done.";
 
+// Set in main() right after the window exists — EXIT's real close path
+// needs the handle (VOID-142 stage-1 wiring).
+GLFWwindow* g_window = nullptr;
+
 // --- Inert UI state (spec section 6.4) ---
 bool g_drawer_open       = false;
 bool g_help_open         = false;
@@ -146,12 +150,56 @@ char g_last_action[64]     = "--";
 char g_contract_value[32]  = "500";
 char g_run_buf[16]         = "RUN 00:00:00";
 
+// --- SNAP FULL (VOID-142): uniform render-scale state. Frozen
+// geometry stays invariant; only world-rendered scale changes. ---
+bool  g_full       = false;
+float g_scale      = 1.0f;
+int   g_saved_x    = 0;
+int   g_saved_y    = 0;
+int   g_saved_w    = 1760;
+int   g_saved_h    = 826;
+float g_base_w     = 1280.0f; // 1280 console-only / 1760 with side panel
+inline float SC(const float v) { return v * g_scale; }
+
+// Recompute scale from the current window rect; SHOW/HIDE PANEL calls
+// this too so the console re-fits when the side panel appears.
+void recompute_scale() {
+    int w = 0, h = 0;
+    glfwGetWindowSize(g_window, &w, &h);
+    g_base_w = g_drawer_open ? 1760.0f : 1280.0f;
+    g_scale  = (w > 0) ? (static_cast<float>(w) / g_base_w) : 1.0f;
+    ImGui::GetIO().FontGlobalScale = g_scale;
+}
+
+void snap_full() {
+    glfwGetWindowPos(g_window, &g_saved_x, &g_saved_y);
+    int w = 0, h = 0;
+    glfwGetWindowSize(g_window, &w, &h);
+    g_saved_w = w;
+    g_saved_h = h;
+    glfwMaximizeWindow(g_window);
+    g_full = true;
+    recompute_scale();
+}
+
+void unsnap_full() {
+    glfwRestoreWindow(g_window);
+    // glfwRestoreWindow re-shows pre-maximize geometry on most WMs; the
+    // explicit set restores saved size deterministically too.
+    glfwSetWindowPos(g_window, g_saved_x, g_saved_y);
+    glfwSetWindowSize(g_window, g_saved_w, g_saved_h);
+    g_full  = false;
+    g_scale = 1.0f;
+    recompute_scale();
+}
+
 // --- Live service state (VOID-142 1c) ---
 service_view_t  g_service = {};
 receipts_view_t g_receipts = {};
 log_ring_t      g_ring_http  = {};
 log_ring_t      g_ring_chain = {};
 log_ring_t      g_ring_errors = {};
+log_ring_t      g_ring_cmds   = {}; // executed forge queries (raw)
 double          g_last_poll  = 0.0;
 
 // Errors filter tab. "" = ALL, else a ring tag ("gw" / "anvil" / "ui").
@@ -192,6 +240,7 @@ std::size_t g_asm_len[PROC_COUNT] = {0, 0, 0};
 char g_http_text[8448]  = "";
 char g_chain_text[8448] = "";
 char g_errors_text[8448] = "";
+char g_cmds_text[8448]  = "";
 
 // Route one completed child-output line into the right rings, tagged
 // by source ("gw" / "anvil" / "ui"). "gw" lines fill the HTTP log;
@@ -276,9 +325,11 @@ void tick_services() {
                               g_deploy_addr);
             }
             log_ring_push(&g_ring_errors, "ui", note);
+            log_ring_push(&g_ring_cmds, "cmd", note);
             std::snprintf(g_last_action, sizeof(g_last_action), "%s", note);
         } else {
             log_ring_push(&g_ring_errors, "ui", "DEPLOY FAILED (forge)");
+            log_ring_push(&g_ring_cmds, "cmd", "DEPLOY FAILED (forge)");
             std::snprintf(g_last_action, sizeof(g_last_action),
                           "DEPLOY FAILED (forge)");
         }
@@ -288,10 +339,6 @@ void tick_services() {
 
 // ...
 
-// Set in main() right after the window exists — EXIT's real close path
-// needs the handle (VOID-142 stage-1 wiring).
-GLFWwindow* g_window = nullptr;
-
 void glfw_error_callback(int error, const char* description) {
     std::fprintf(stderr, "GLFW Error %d: %s\n", error, description);
 }
@@ -300,12 +347,13 @@ void glfw_error_callback(int error, const char* description) {
 void draw_marker(const ImVec4& col) {
     const ImVec2 p = ImGui::GetCursorScreenPos();
     const float line_h = ImGui::GetTextLineHeight();
-    const float y = p.y + ((line_h - 10.0f) * 0.5f);
+    const float y = p.y + ((line_h - SC(10.0f)) * 0.5f);
     ImGui::GetWindowDrawList()->AddRectFilled(
-        ImVec2(p.x, y), ImVec2(p.x + 10.0f, y + 10.0f),
+        ImVec2(p.x, y),
+        ImVec2(p.x + SC(10.0f), y + SC(10.0f)),
         ImGui::ColorConvertFloat4ToU32(col));
-    ImGui::Dummy(ImVec2(10.0f, 0.0f));
-    ImGui::SameLine(0.0f, 7.0f);
+    ImGui::Dummy(ImVec2(SC(10.0f), 0.0f));
+    ImGui::SameLine(0.0f, SC(7.0f));
 }
 
 void panel_title(const char* title, bool marker) {
@@ -327,8 +375,8 @@ void log_box(const char* id, const char* content, float height) {
 }
 
 void begin_panel(const char* id, const float x, const float y) {
-    ImGui::SetCursorPos(ImVec2(x, y));
-    ImGui::BeginChild(id, ImVec2(kPanelW, kPanelH), true);
+    ImGui::SetCursorPos(ImVec2(SC(x), SC(y)));
+    ImGui::BeginChild(id, ImVec2(SC(kPanelW), SC(kPanelH)), true);
 }
 
 // Reject anything that is not an ASCII digit (CONTRACT VALUE field).
@@ -446,14 +494,11 @@ void render_panel4() {
     ImGui::Separator();
 
     const float avail = ImGui::GetContentRegionAvail().x;
-    // VOID-142 redesign: contract value + LOAD + address edit moved
-    // into the side panel's EDIT CONTRACT tab. Panel 4 keeps
-    // run/panel-toggle/help/exit.
-    const float half_w = (avail - 8.0f) * 0.5f;
+    const float half_w = (avail - SC(8.0f)) * 0.5f;
     // START auto-chain: with no contract loaded it deploys first
     // (async → "DEPLOYING…"; tick_services chains the gateway on
     // the deploy result). One click = Panels 2 AND 3 come up.
-    if (ImGui::Button("START", ImVec2(half_w, 40.0f))) {
+    if (ImGui::Button("START", ImVec2(half_w, SC(40.0f)))) {
         if (proc_anvil_start() != 0) {
             std::snprintf(g_last_action, sizeof(g_last_action),
                           "START FAILED (anvil)");
@@ -472,32 +517,47 @@ void render_panel4() {
         }
     }
     ImGui::SameLine();
-    if (ImGui::Button("STOP", ImVec2(half_w, 40.0f))) {
+    if (ImGui::Button("STOP", ImVec2(half_w, SC(40.0f)))) {
         const int rc = proc_stop_all();
         std::snprintf(g_last_action, sizeof(g_last_action),
                       (rc == 0) ? "STOP (clean)" : "STOP (forced)");
     }
-    const float third_w = (avail - 16.0f) / 3.0f;
-    if (ImGui::Button("SEND ACK", ImVec2(third_w, 40.0f))) {
+    // Row 3: SEND ACK | SHOW PANEL | HELP | SNAP↔RESTORE (four cols).
+    const float q_w = (avail - SC(24.0f)) * 0.25f;
+    if (ImGui::Button("SEND ACK", ImVec2(q_w, SC(40.0f)))) {
         std::snprintf(g_last_action, sizeof(g_last_action), "SEND ACK");
     }
     ImGui::SameLine();
     const char* panel_label = g_drawer_open ? "HIDE PANEL" : "SHOW PANEL";
-    if (ImGui::Button(panel_label, ImVec2(third_w, 40.0f))) {
+    if (ImGui::Button(panel_label, ImVec2(q_w, SC(40.0f)))) {
         g_drawer_open = !g_drawer_open;
         std::snprintf(g_last_action, sizeof(g_last_action), "%s",
                       g_drawer_open ? "SHOW PANEL" : "HIDE PANEL");
+        if (g_full) {
+            recompute_scale(); // base width changed 1280 ↔ 1760
+        }
     }
     ImGui::SameLine();
-    if (ImGui::Button("HELP", ImVec2(third_w, 40.0f))) {
+    if (ImGui::Button("HELP", ImVec2(q_w, SC(40.0f)))) {
         g_help_open = true;
         g_help_just_opened = true;
+    }
+    ImGui::SameLine();
+    const char* snap_label = g_full ? "RESTORE" : "SNAP FULL";
+    if (ImGui::Button(snap_label, ImVec2(q_w, SC(40.0f)))) {
+        if (g_full) {
+            unsnap_full();
+        } else {
+            snap_full();
+        }
+        std::snprintf(g_last_action, sizeof(g_last_action), "%s",
+                      g_full ? "SNAP FULL" : "RESTORE");
     }
 
     ImGui::PushStyleColor(ImGuiCol_Button, kDanger);
     ImGui::PushStyleColor(ImGuiCol_ButtonHovered, kDangerHover);
     ImGui::PushStyleColor(ImGuiCol_ButtonActive, kDangerActive);
-    if (ImGui::Button("EXIT", ImVec2(-1.0f, 40.0f))) {
+    if (ImGui::Button("EXIT", ImVec2(-1.0f, SC(40.0f)))) {
         // Graceful first: reap the stack, then close the window.
         proc_stop_all();
         std::snprintf(g_last_action, sizeof(g_last_action), "EXIT");
@@ -527,9 +587,9 @@ void render_side_panel() {
     if (!g_drawer_open) {
         return;
     }
-    ImGui::SetCursorPos(ImVec2(kMargin + kPanelW + kSpacing + kPanelW + kSpacing,
+    ImGui::SetCursorPos(ImVec2(SC(kMargin + kPanelW + kSpacing + kPanelW + kSpacing),
                                0.0f));
-    ImGui::BeginChild("SidePanel", ImVec2(kDrawerW, kDrawerH), true);
+    ImGui::BeginChild("SidePanel", ImVec2(SC(kDrawerW), SC(kDrawerH)), true);
     // Two-tab panel: EDIT CONTRACT (address/value/load) | VIEW RECEIPTS
     // (receipts.json tail). Tab state persists across hide/show.
     if (ImGui::BeginTabBar("SideTabs", ImGuiTabBarFlags_None)) {
@@ -570,11 +630,12 @@ void render_side_panel() {
                 }
             }
             ImGui::Spacing();
-            if (ImGui::Button("LOAD NEXT CONTRACT", ImVec2(-1.0f, 40.0f))) {
+            if (ImGui::Button("LOAD NEXT CONTRACT", ImVec2(-1.0f, SC(40.0f)))) {
                 if (proc_anvil_start() != 0) {
                     std::snprintf(g_last_action, sizeof(g_last_action),
                                   "LOAD FAILED (anvil)");
                 } else if (start_async_deploy(false) == 0) {
+                    log_ring_push(&g_ring_cmds, "cmd", proc_forge_cmdline());
                     std::snprintf(g_last_action, sizeof(g_last_action),
                                   "DEPLOYING…");
                 } else {
@@ -582,6 +643,15 @@ void render_side_panel() {
                                   "DEPLOY BUSY");
                 }
             }
+            ImGui::Spacing();
+            // Raw query visibility: the next forge command (source of
+            // truth — built from the same statics the worker spawns)
+            // plus the executed ring, newest at bottom.
+            ImGui::TextDisabled("NEXT QUERY (raw):");
+            log_box("CmdPreview", proc_forge_cmdline(), SC(40.0f));
+            log_ring_render(&g_ring_cmds, g_cmds_text, sizeof(g_cmds_text), "");
+            ImGui::TextDisabled("EXECUTED QUERIES (raw — newest at bottom):");
+            log_box("CmdHistory", g_cmds_text, SC(120.0f));
             ImGui::EndTabItem();
         }
         if (ImGui::BeginTabItem("VIEW RECEIPTS")) {
@@ -617,10 +687,10 @@ void render_side_panel() {
 }
 
 void render_error_strip() {
-    ImGui::SetCursorPos(ImVec2(0.0f, kStripY));
+    ImGui::SetCursorPos(ImVec2(0.0f, SC(kStripY)));
     ImGui::PushStyleColor(ImGuiCol_ChildBg, kLogBg);
     ImGui::PushStyleColor(ImGuiCol_Border, kLogBorder);
-    ImGui::BeginChild("ErrorStrip", ImVec2(1280.0f, kStripH), true);
+    ImGui::BeginChild("ErrorStrip", ImVec2(SC(1280.0f), SC(kStripH)), true);
     // Filter tabs live on the label row — the frozen 98px strip keeps
     // its geometry, the ring filters by source tag.
     ImGui::TextUnformatted("ERRORS");
@@ -643,7 +713,7 @@ void render_error_strip() {
     }
     log_ring_render(&g_ring_errors, g_errors_text, sizeof(g_errors_text),
                     g_err_filter);
-    log_box("ErrLog", g_errors_text, 64.0f);
+    log_box("ErrLog", g_errors_text, SC(64.0f));
     ImGui::EndChild();
     ImGui::PopStyleColor(2);
 }
@@ -652,8 +722,8 @@ void render_help_modal(const ImVec2& display) {
     if (!g_help_open) {
         return;
     }
-    constexpr float kModalW = 620.0f;
-    constexpr float kModalH = 660.0f;
+    const float kModalW = SC(620.0f);
+    const float kModalH = SC(660.0f);
     const float mx = (display.x - kModalW) * 0.5f;
     const float my = (display.y - kModalH) * 0.5f;
 
