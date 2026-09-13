@@ -1,5 +1,13 @@
 [
   {
+    "hash": "b4e0531ddedbf1834e5c829264b4bff82865ba9b",
+    "short_hash": "b4e0531",
+    "author": "director-TIG",
+    "date": "2026-09-13T11:34:59+01:00",
+    "message": "VOID-141: ImGui ground-station console — stage-1 inert port (#6.5)\n\nPort of the frozen 19-iteration HTML mock-up to Dear ImGui per the\none-shot handover spec docs/VOID-141_IMGUI_PORT_SPEC.md.\n\n- ui/main.cpp: single 1760x826 non-resizable window, 4 fixed panels\n  (RF Comms 7-leg + gate strip, Go Server, L2 Blockchain, Operator\n  Controls), RUN clock, digits-filtered contract value (32-byte\n  buffer + 16-char cap per spec 5.4/6.4), receipts drawer, help\n  modal (660px), error strip. Glyph parity with mockup restored\n  (U+2194, U+2014, U+00B7, U+2192).\n- CMake: VOID_BUILD_UI option (default OFF); GLFW 3.3.8 + ImGui\n  1.90.5 via FetchContent; full CERT -Werror stack on UI glue code;\n  SYSTEM includes for vendored imgui.\n- ui/mockup.html: frozen design source, committed as reference.\n- docs: PORT_SPEC (frozen) added; original ticket doc SUPERSEDED.\n- journey: #6.5 In progress (stage-1 done; wiring = future tickets\n  per spec section 8) + Change Log v17.\n- .gitignore: build*/ now covers build-ui/.\n\nVerified: clean -Werror build, 41/41 ground-station ctest, 10s\nruntime smoke. Live-data wiring deliberately not started.\nDecision graph 231-275 (freeze), 278-282 (port + verify).",
+    "files_changed": 7
+  },
+  {
     "hash": "630643fa60e2198422a64180800f789ac0df4351",
     "short_hash": "630643f",
     "author": "director-TIG",
@@ -211,7 +219,7 @@
     "hash": "c2cc171460669ff0930c1818bd987a48803308ec",
     "short_hash": "c2cc171",
     "author": "director-TIG",
-    "date": "2026-02-20T18:28:02+00:00",
+    "date": "2026-02-20T18:28:02Z",
     "message": "Feat: Implement C++ CLI Ground Station Bouncer with local libsodium build",
     "files_changed": 23
   }
