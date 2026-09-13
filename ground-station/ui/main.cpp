@@ -468,6 +468,32 @@ void log_box(const char* id, const char* content, float height) {
     ImGui::PopStyleColor(2);
 }
 
+// Right-aligned CLEAR on a log label row: resets the ring (the
+// per-frame log_ring_render snapshot re-empties the box) and zeroes
+// the rendered snapshot as belt-and-braces. SmallButton uses zero
+// frame padding, so its width is the label's text width.
+void clear_button(const char* id, log_ring_t* ring, char* snap) {
+    const float btn_w = ImGui::CalcTextSize("CLEAR").x;
+    ImGui::SameLine(ImGui::GetWindowContentRegionMax().x - btn_w);
+    if (ImGui::SmallButton(id)) {
+        log_ring_reset(ring);
+        if (snap != nullptr) {
+            snap[0] = '\0';
+        }
+    }
+}
+
+// Column header pinned above the Panel-2 HTTP log box. Pipe characters
+// sit exactly over gin's DefaultLogFormatter columns (non-TTY → no
+// ANSI colors in the piped stdout): 6-char "[GIN] " prefix, 21-char
+// timestamp, 3-wide status, 13-wide latency, 15-wide client IP, 7-wide
+// method, then the path — e.g.
+//   [GIN] 2026/09/13 - 15:04:05 | 200 |      1.234ms |       127.0.0.1 | POST     "/api/v1/ingest"
+// Non-gin gateway lines (level=info events, packet dumps) appear in
+// the box as-is beneath the header.
+const char* kHttpLogHeader =
+    "      TIMESTAMP             | CODE|       LATENCY |              IP | METHOD  PATH";
+
 void begin_panel(const char* id, const float x, const float y) {
     ImGui::SetCursorPos(ImVec2(SC(x), SC(y)));
     ImGui::BeginChild(id, ImVec2(SC(kPanelW), SC(kPanelH)), true);
@@ -535,6 +561,7 @@ void render_panel1() {
 
     ImGui::Separator();
     ImGui::TextDisabled("LOG (live)");
+    clear_button("CLEAR##rf", &g_ring_rf, g_rf_text);
     const float gate_h = ImGui::GetTextLineHeightWithSpacing() + 3.0f;
     // VOID-142 stage-2: Panel-2 pattern — bouncer ring snapshot into
     // g_rf_text (tag "rf"), then the frozen log_box geometry.
@@ -576,6 +603,10 @@ void render_panel2() {
     std::snprintf(line, sizeof(line), "Receipts SENT:  %ld", g_service.receipts_dispatched);
     ImGui::TextUnformatted(line);
     ImGui::TextDisabled("HTTP LOG (live)");
+    clear_button("CLEAR##http", &g_ring_http, g_http_text);
+    // Pinned column header (gin request-line widths) — stays visible
+    // while the box below scrolls.
+    ImGui::TextDisabled("%s", kHttpLogHeader);
     log_ring_render(&g_ring_http, g_http_text, sizeof(g_http_text), "");
     log_box("GwLog", g_http_text, ImGui::GetContentRegionAvail().y);
     ImGui::EndChild();
@@ -604,6 +635,7 @@ void render_panel3() {
                   static_cast<unsigned>(g_receipts.settlements));
     ImGui::TextUnformatted(line);
     ImGui::TextDisabled("BLOCKCHAIN LOG (live — newest at bottom)");
+    clear_button("CLEAR##chain", &g_ring_chain, g_chain_text);
     log_ring_render(&g_ring_chain, g_chain_text, sizeof(g_chain_text), "");
     log_box("L2Log", g_chain_text, ImGui::GetContentRegionAvail().y);
     ImGui::EndChild();
@@ -795,20 +827,35 @@ void render_side_panel() {
                       sizeof(cmd_preview), 72);
             log_box("CmdPreview", cmd_preview, SC(56.0f));
             ImGui::TextDisabled("EXECUTED QUERIES (raw — newest at bottom):");
+            clear_button("CLEAR##cmds", &g_ring_cmds, g_cmds_text);
             log_ring_render(&g_ring_cmds, g_cmds_text, sizeof(g_cmds_text), "");
             log_box("CmdHistory", g_cmds_text, SC(104.0f));
             ImGui::EndTabItem();
         }
         if (ImGui::BeginTabItem("VIEW RECEIPTS")) {
             ImGui::TextDisabled("receipts.json — read-only tail (live)");
+            // View-only CLEAR: snapshot current keys into `hidden`
+            // (receipts.json itself stays untouched — TRL 4 restart
+            // evidence). New receipts appear normally after a clear.
+            ImGui::SameLine(ImGui::GetWindowContentRegionMax().x -
+                            ImGui::CalcTextSize("CLEAR").x);
+            if (ImGui::SmallButton("CLEAR##receipts")) {
+                receipts_clear_view(&g_receipts);
+            }
             // Two indented lines per record (chosen layout): payment
             // id on line 1, tx hash + status on line 2. Deterministic
             // wrap, no mid-field breaks. Bounded per frame.
             static char drawer_text[32768];
             drawer_text[0] = '\0';
             std::size_t used = 0;
+            std::size_t visible = 0;
             for (std::size_t i = 0; i < g_receipts.key_count; ++i) {
                 const receipt_key_t& k = g_receipts.keys[i];
+                if (receipt_is_hidden(&g_receipts, k.payment_id,
+                                      k.tx_hash)) {
+                    continue; // operator-cleared — stay hidden
+                }
+                ++visible;
                 const int n = std::snprintf(
                     drawer_text + used, sizeof(drawer_text) - used,
                     "{\"payment_id\":\"%s\",\n   \"tx_hash\":\"%s\",\"status\":\"%s\"}\n",
@@ -818,11 +865,13 @@ void render_side_panel() {
                 }
                 used += static_cast<std::size_t>(n);
             }
-            if (g_receipts.key_count == 0) {
-                std::snprintf(drawer_text, sizeof(drawer_text),
-                              "%s",
-                              (g_receipts.path_ok) ? "-- receipts.json empty --"
-                                                   : "-- no receipts.json yet --");
+            if (visible == 0) {
+                std::snprintf(drawer_text, sizeof(drawer_text), "%s",
+                              (g_receipts.key_count == 0)
+                                  ? ((g_receipts.path_ok)
+                                         ? "-- receipts.json empty --"
+                                         : "-- no receipts.json yet --")
+                                  : "-- receipts cleared — new receipts appear here --");
             }
             log_box("DrawerLog", drawer_text, ImGui::GetContentRegionAvail().y);
             ImGui::EndTabItem();
@@ -858,6 +907,9 @@ void render_error_strip() {
         }
         ImGui::SameLine();
     }
+    // CLEAR sits right-aligned on the same label row; it empties every
+    // stored line regardless of the active filter tab.
+    clear_button("CLEAR##errors", &g_ring_errors, g_errors_text);
     log_ring_render(&g_ring_errors, g_errors_text, sizeof(g_errors_text),
                     g_err_filter);
     log_box("ErrLog", g_errors_text, SC(64.0f));

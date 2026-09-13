@@ -114,3 +114,31 @@ void receipts_tail_tick(receipts_view_t* view) {
     std::fclose(f);
     view->settlements = view->key_count;
 }
+
+void receipts_clear_view(receipts_view_t* view) {
+    if (view == nullptr) {
+        return;
+    }
+    const std::size_t cap =
+        sizeof(view->hidden) / sizeof(view->hidden[0]);
+    view->hidden_count =
+        (view->key_count < cap) ? view->key_count : cap;
+    for (std::size_t i = 0; i < view->hidden_count; ++i) {
+        view->hidden[i] = view->keys[i];
+    }
+}
+
+bool receipt_is_hidden(const receipts_view_t* view, const char* pid,
+                       const char* hash) {
+    if (view == nullptr || pid == nullptr || hash == nullptr) {
+        return false;
+    }
+    for (std::size_t i = 0; i < view->hidden_count; ++i) {
+        const receipt_key_t& h = view->hidden[i];
+        if (h.used && std::strcmp(h.payment_id, pid) == 0 &&
+            std::strcmp(h.tx_hash, hash) == 0) {
+            return true;
+        }
+    }
+    return false;
+}
