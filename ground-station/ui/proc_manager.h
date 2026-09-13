@@ -40,15 +40,25 @@ int proc_anvil_start(void);
 
 // Spawn the gateway (`go run ./cmd/server`, CWD <root>/gateway) with
 // VOID_ALPHA_PLAINTEXT=1 and VOID_ESCROW_ADDRESS=<proc_escrow()>.
-// Requires proc_escrow() to be non-empty (LOAD NEXT CONTRACT first).
+// Requires proc_escrow() to be non-empty (contract loaded first).
 // Returns 0 on spawn, -1 on failure / no contract loaded.
 int proc_gateway_start(void);
 
-// Ensure anvil is up, then run `forge create src/Escrow.sol:Escrow`
-// (blocking, CWD <root>/contracts), parse the "Deployed to:" address
-// into the static escrow buffer, and — when the gateway is running —
-// restart it pointed at the new address. 0 on success, -1 on failure.
-int proc_deploy_contract(void);
+// Restart the gateway on the current contract (APPLY / post-deploy
+// re-point). Returns 0/-1.
+int proc_gateway_restart(void);
+
+// Pure forge worker: run `forge create src/Escrow.sol:Escrow` and copy
+// the "Deployed to:" address into out_addr. Thread-safe by contract —
+// it never touches the child slot table, so the render thread owns
+// anvil/lifecycle and only the bounded pipe dance runs on the worker.
+// Returns 0 on success (out_addr holds 0x+40hex), -1 on failure.
+int proc_forge_deploy(char* out_addr, std::size_t out_cap);
+
+// Validate + normalize ("0x" added when missing) + stash an operator-
+// supplied escrow address. Returns 0, -1 when the input isn't a clean
+// 0x?+40hex form (APPLY echoes INVALID, nothing else changes).
+int proc_set_escrow(const char* addr);
 
 // Current escrow address ("" until the first successful deploy).
 const char* proc_escrow(void);

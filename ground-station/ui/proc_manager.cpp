@@ -234,7 +234,7 @@ int proc_anvil_start(void) {
 int proc_gateway_start(void) {
     proc_init();
     if (g_escrow[0] == '\0') {
-        return -1; // LOAD NEXT CONTRACT must run first
+        return -1; // a contract must be loaded first
     }
     if (proc_running(PROC_GATEWAY) != 0) {
         return 0;
@@ -254,11 +254,59 @@ int proc_gateway_start(void) {
     return spawn_service(PROC_GATEWAY, argv, cwd, envp);
 }
 
-int proc_deploy_contract(void) {
-    proc_init();
-    if (proc_anvil_start() != 0) {
+// Operator-supplied address check: "0x" prefix optional, exactly 40
+// hex digits after it. Validation happens in the caller so APPLY can
+// echo INVALID without ever touching the running config.
+bool escrow_addr_sane(const char* addr) {
+    if (addr == nullptr) {
+        return false;
+    }
+    const char* digits = addr;
+    if (addr[0] == '0' && (addr[1] == 'x' || addr[1] == 'X')) {
+        digits = addr + 2;
+    }
+    if (std::strlen(digits) != 40) {
+        return false;
+    }
+    for (int i = 0; i < 40; ++i) {
+        const char c = digits[i];
+        const bool hex_digit = (c >= '0' && c <= '9') ||
+                               (c >= 'a' && c <= 'f') ||
+                               (c >= 'A' && c <= 'F');
+        if (!hex_digit) {
+            return false;
+        }
+    }
+    return true;
+}
+
+// Validate + normalize (add "0x" when missing) + stash. 0 ok, -1 bad.
+int proc_set_escrow(const char* addr) {
+    if (!escrow_addr_sane(addr)) {
         return -1;
     }
+    const char* digits = addr;
+    if (addr[0] == '0' && (addr[1] == 'x' || addr[1] == 'X')) {
+        digits = addr + 2;
+    }
+    std::snprintf(g_escrow, sizeof(g_escrow), "0x%s", digits);
+    return 0;
+}
+
+int proc_gateway_restart(void) {
+    proc_stop(PROC_GATEWAY);
+    return proc_gateway_start();
+}
+
+// Pure forge worker: spawn → drain → parse → out_addr. Thread-safe by
+// contract — it never touches the child slot table (anvil must be up
+// before the worker starts; chain logic stays on the render thread).
+int proc_forge_deploy(char* out_addr, std::size_t out_cap) {
+    proc_init();
+    if (out_addr == nullptr || out_cap < 43) {
+        return -1;
+    }
+    out_addr[0] = '\0';
     char cwd[1050];
     std::snprintf(cwd, sizeof(cwd), "%s/contracts", g_repo_root);
     char* const argv[] = {
@@ -322,24 +370,10 @@ int proc_deploy_contract(void) {
         static_cast<std::size_t>(addr - g_forge_out) < 42) {
         return -1;
     }
-    if (addr[0] != '0' || addr[1] != 'x') {
+    std::snprintf(out_addr, out_cap, "%.42s", addr);
+    if (!escrow_addr_sane(out_addr)) {
+        out_addr[0] = '\0';
         return -1;
-    }
-    for (int i = 2; i < 42; ++i) {
-        const char c = addr[i];
-        const bool hex_digit = (c >= '0' && c <= '9') ||
-                               (c >= 'a' && c <= 'f') ||
-                               (c >= 'A' && c <= 'F');
-        if (!hex_digit) {
-            return -1;
-        }
-    }
-    std::snprintf(g_escrow, sizeof(g_escrow), "%.*s", 42, addr);
-
-    // Running gateway? Restart it on the new contract.
-    if (proc_running(PROC_GATEWAY) != 0) {
-        proc_stop(PROC_GATEWAY);
-        return proc_gateway_start();
     }
     return 0;
 }

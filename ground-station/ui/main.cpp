@@ -13,6 +13,8 @@
 
 #include <cstdio>
 #include <cstring>
+#include <atomic>
+#include <thread>
 
 #include "imgui.h"
 #include "imgui_impl_glfw.h"
@@ -136,6 +138,14 @@ const char* kHelpGate =
     "a full demo pass is one clean A → B → ACK → SETTLE → C → D run.\n"
     "10 consecutive passes = flat-sat alpha done.";
 
+// --- Inert UI state (spec section 6.4) ---
+bool g_drawer_open       = false;
+bool g_help_open         = false;
+bool g_help_just_opened  = false;
+char g_last_action[64]     = "--";
+char g_contract_value[32]  = "500";
+char g_run_buf[16]         = "RUN 00:00:00";
+
 // --- Live service state (VOID-142 1c) ---
 service_view_t  g_service = {};
 receipts_view_t g_receipts = {};
@@ -143,6 +153,34 @@ log_ring_t      g_ring_http  = {};
 log_ring_t      g_ring_chain = {};
 log_ring_t      g_ring_errors = {};
 double          g_last_poll  = 0.0;
+
+// Errors filter tab. "" = ALL, else a ring tag ("gw" / "anvil" / "ui").
+const char* g_err_filter = "";
+
+// Async deploy worker (VOID-142): forge runs detached so the UI never
+// freezes. Result lands in g_deploy_state; tick_services() harvests it
+// on the render thread (chain logic stays off the worker).
+// 0 idle · 1 running · 2 done (g_deploy_rc holds 0/-1)
+std::atomic<int> g_deploy_state{0};
+int              g_deploy_rc = 0;
+bool             g_chain_after_deploy = false;
+char             g_deploy_addr[48] = "";
+
+void deploy_worker() {
+    g_deploy_rc = proc_forge_deploy(g_deploy_addr, sizeof(g_deploy_addr));
+    g_deploy_state.store(2);
+}
+
+// 0 kicked off, -1 busy (a deploy is already running).
+int start_async_deploy(const bool chain_after) {
+    if (g_deploy_state.load() == 1) {
+        return -1;
+    }
+    g_chain_after_deploy = chain_after;
+    g_deploy_state.store(1);
+    std::thread(deploy_worker).detach();
+    return 0;
+}
 
 // Child-pipe line assembly: chunks arrive arbitrarily framed, we split
 // complete '\n'-terminated lines here before ringing them.
@@ -155,20 +193,23 @@ char g_http_text[8448]  = "";
 char g_chain_text[8448] = "";
 char g_errors_text[8448] = "";
 
-// Route one completed child-output line into the right rings. Gateway
-// lines also feed the chain panel when they carry settlement keywords;
-// warn/error-ish lines from any child mirror into the error strip.
-void route_child_line(int id, const char* line) {
-    if (id == PROC_GATEWAY) {
-        log_ring_push(&g_ring_http, line);
+// Route one completed child-output line into the right rings, tagged
+// by source ("gw" / "anvil" / "ui"). "gw" lines fill the HTTP log;
+// "anvil" fills the chain log; settlement keywords on a "gw" line
+// mirror into the chain log too; warn/error-ish lines from any
+// source mirror into the error strip.
+void route_child_line(const char* tag, const char* line) {
+    if (tag == nullptr || line == nullptr) return;
+    if (std::strcmp(tag, "gw") == 0) {
+        log_ring_push(&g_ring_http, tag, line);
         if (std::strstr(line, "settlebatch") != nullptr ||
             std::strstr(line, "receipt.persisted") != nullptr ||
             std::strstr(line, "escrow") != nullptr ||
             std::strstr(line, "block") != nullptr) {
-            log_ring_push(&g_ring_chain, line);
+            log_ring_push(&g_ring_chain, tag, line);
         }
-    } else if (id == PROC_ANVIL) {
-        log_ring_push(&g_ring_chain, line);
+    } else if (std::strcmp(tag, "anvil") == 0) {
+        log_ring_push(&g_ring_chain, tag, line);
     }
     if (std::strstr(line, "level=warn") != nullptr ||
         std::strstr(line, "level=error") != nullptr ||
@@ -177,7 +218,7 @@ void route_child_line(int id, const char* line) {
         std::strstr(line, "failed") != nullptr ||
         std::strstr(line, "⛔") != nullptr ||
         std::strstr(line, "ERROR") != nullptr) {
-        log_ring_push(&g_ring_errors, line);
+        log_ring_push(&g_ring_errors, tag, line);
     }
 }
 
@@ -189,11 +230,13 @@ void drain_child_pipes() {
         if (n <= 0) {
             continue;
         }
+        const char* tag = (id == PROC_GATEWAY) ? "gw" :
+                          (id == PROC_ANVIL)   ? "anvil" : "ui";
         for (int i = 0; i < n; ++i) {
             const char c = chunk[i];
             if (c == '\n') {
                 g_asm[id][g_asm_len[id]] = '\0';
-                route_child_line(id, g_asm[id]);
+                route_child_line(tag, g_asm[id]);
                 g_asm_len[id] = 0;
             } else if (g_asm_len[id] < sizeof(g_asm[id]) - 1) {
                 g_asm[id][g_asm_len[id]++] = c;
@@ -211,15 +254,39 @@ void tick_services() {
         receipts_tail_tick(&g_receipts);
         g_last_poll = ImGui::GetTime();
     }
+    // Harvest a finished async deploy on the render thread (VOID-142).
+    if (g_deploy_state.load() == 2) {
+        g_deploy_state.store(0);
+        if (g_deploy_rc == 0 && proc_set_escrow(g_deploy_addr) == 0) {
+            char note[128];
+            // Chain-after (START pressed with no contract): spawn the
+            // gateway now. Plain LOAD: restart it when it was running.
+            if (g_chain_after_deploy) {
+                const int rc = proc_gateway_start();
+                std::snprintf(note, sizeof(note), "DEPLOY OK %s (%s)",
+                              g_deploy_addr,
+                              (rc == 0) ? "gateway start" : "gateway FAILED");
+            } else if (proc_running(PROC_GATEWAY) != 0) {
+                const int rc = proc_gateway_restart();
+                std::snprintf(note, sizeof(note), "DEPLOY OK %s (%s)",
+                              g_deploy_addr,
+                              (rc == 0) ? "gateway re-point" : "repoint FAILED");
+            } else {
+                std::snprintf(note, sizeof(note), "DEPLOY OK %s",
+                              g_deploy_addr);
+            }
+            log_ring_push(&g_ring_errors, "ui", note);
+            std::snprintf(g_last_action, sizeof(g_last_action), "%s", note);
+        } else {
+            log_ring_push(&g_ring_errors, "ui", "DEPLOY FAILED (forge)");
+            std::snprintf(g_last_action, sizeof(g_last_action),
+                          "DEPLOY FAILED (forge)");
+        }
+        g_chain_after_deploy = false;
+    }
 }
 
-// --- Inert UI state (spec section 6.4) ---
-bool g_drawer_open       = false;
-bool g_help_open         = false;
-bool g_help_just_opened  = false;
-char g_last_action[64]     = "--";
-char g_contract_value[32]  = "500";
-char g_run_buf[16]         = "RUN 00:00:00";
+// ...
 
 // Set in main() right after the window exists — EXIT's real close path
 // needs the handle (VOID-142 stage-1 wiring).
@@ -333,7 +400,7 @@ void render_panel2() {
     std::snprintf(line, sizeof(line), "Receipts SENT:  %ld", g_service.receipts_dispatched);
     ImGui::TextUnformatted(line);
     ImGui::TextDisabled("HTTP LOG (live)");
-    log_ring_render(&g_ring_http, g_http_text, sizeof(g_http_text));
+    log_ring_render(&g_ring_http, g_http_text, sizeof(g_http_text), "");
     log_box("GwLog", g_http_text, ImGui::GetContentRegionAvail().y);
     ImGui::EndChild();
 }
@@ -361,7 +428,7 @@ void render_panel3() {
                   static_cast<unsigned>(g_receipts.settlements));
     ImGui::TextUnformatted(line);
     ImGui::TextDisabled("BLOCKCHAIN LOG (live — newest at bottom)");
-    log_ring_render(&g_ring_chain, g_chain_text, sizeof(g_chain_text));
+    log_ring_render(&g_ring_chain, g_chain_text, sizeof(g_chain_text), "");
     log_box("L2Log", g_chain_text, ImGui::GetContentRegionAvail().y);
     ImGui::EndChild();
 }
@@ -378,54 +445,48 @@ void render_panel4() {
     ImGui::TextUnformatted(g_run_buf);
     ImGui::Separator();
 
-    ImGui::TextUnformatted("CONTRACT VALUE:");
-    ImGui::SameLine();
-    ImGui::SetNextItemWidth(280.0f);
-    ImGui::InputText("##contract_value", g_contract_value,
-                     static_cast<int>(sizeof(g_contract_value)),
-                     ImGuiInputTextFlags_CallbackCharFilter, digit_filter);
-    ImGui::TextDisabled("amount used by LOAD NEXT CONTRACT");
-
     const float avail = ImGui::GetContentRegionAvail().x;
-    // VOID-142 stage-1: LOAD ensures anvil, deploys Escrow via forge,
-    // and re-points the gateway. Result address echoes into the action
-    // line (value kept per spec §6.4).
-    if (ImGui::Button("LOAD NEXT CONTRACT", ImVec2(-1.0f, 40.0f))) {
-        const int rc = proc_deploy_contract();
-        const char* value = (g_contract_value[0] != '\0') ? g_contract_value : "0";
-        if (rc == 0) {
+    // VOID-142 redesign: contract value + LOAD + address edit moved
+    // into the side panel's EDIT CONTRACT tab. Panel 4 keeps
+    // run/panel-toggle/help/exit.
+    const float half_w = (avail - 8.0f) * 0.5f;
+    // START auto-chain: with no contract loaded it deploys first
+    // (async → "DEPLOYING…"; tick_services chains the gateway on
+    // the deploy result). One click = Panels 2 AND 3 come up.
+    if (ImGui::Button("START", ImVec2(half_w, 40.0f))) {
+        if (proc_anvil_start() != 0) {
             std::snprintf(g_last_action, sizeof(g_last_action),
-                          "LOAD CONTRACT (value=%s) %s", value, proc_escrow());
+                          "START FAILED (anvil)");
+        } else if (proc_escrow()[0] == '\0') {
+            if (start_async_deploy(true) == 0) {
+                std::snprintf(g_last_action, sizeof(g_last_action),
+                              "DEPLOYING…");
+            } else {
+                std::snprintf(g_last_action, sizeof(g_last_action),
+                              "DEPLOY BUSY");
+            }
         } else {
+            const int rc = proc_gateway_start();
             std::snprintf(g_last_action, sizeof(g_last_action),
-                          "LOAD CONTRACT (value=%s) FAILED", value);
+                          (rc == 0) ? "START (anvil+gateway)" : "START FAILED");
         }
-    }
-    // START: anvil first, then gateway (uses the loaded contract).
-    if (ImGui::Button("START", ImVec2(avail * 0.5f - 4.0f, 40.0f))) {
-        int rc = proc_anvil_start();
-        if (rc == 0) {
-            rc = proc_gateway_start();
-        }
-        std::snprintf(g_last_action, sizeof(g_last_action), "START (%s)",
-                      (rc == 0) ? "anvil+gateway" : "FAILED");
     }
     ImGui::SameLine();
-    if (ImGui::Button("STOP", ImVec2(avail * 0.5f - 4.0f, 40.0f))) {
+    if (ImGui::Button("STOP", ImVec2(half_w, 40.0f))) {
         const int rc = proc_stop_all();
-        std::snprintf(g_last_action, sizeof(g_last_action), "STOP (%s)",
-                      (rc == 0) ? "clean" : "forced");
+        std::snprintf(g_last_action, sizeof(g_last_action),
+                      (rc == 0) ? "STOP (clean)" : "STOP (forced)");
     }
     const float third_w = (avail - 16.0f) / 3.0f;
     if (ImGui::Button("SEND ACK", ImVec2(third_w, 40.0f))) {
         std::snprintf(g_last_action, sizeof(g_last_action), "SEND ACK");
     }
     ImGui::SameLine();
-    const char* receipts_label = g_drawer_open ? "HIDE RECEIPTS" : "VIEW RECEIPTS";
-    if (ImGui::Button(receipts_label, ImVec2(third_w, 40.0f))) {
+    const char* panel_label = g_drawer_open ? "HIDE PANEL" : "SHOW PANEL";
+    if (ImGui::Button(panel_label, ImVec2(third_w, 40.0f))) {
         g_drawer_open = !g_drawer_open;
         std::snprintf(g_last_action, sizeof(g_last_action), "%s",
-                      g_drawer_open ? "SHOW RECEIPTS" : "HIDE RECEIPTS");
+                      g_drawer_open ? "SHOW PANEL" : "HIDE PANEL");
     }
     ImGui::SameLine();
     if (ImGui::Button("HELP", ImVec2(third_w, 40.0f))) {
@@ -451,38 +512,107 @@ void render_panel4() {
     ImGui::EndChild();
 }
 
-void render_drawer() {
+// Editable escrow buffer for the side panel's EDIT CONTRACT tab.
+char g_address_edit[48] = "";
+
+// 0-9 / a-f / A-F / the '0x' prefix characters (escrow address field).
+int address_filter(ImGuiInputTextCallbackData* data) {
+    const ImWchar c = data->EventChar;
+    const bool ok = (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') ||
+                    (c >= 'A' && c <= 'F') || (c == 'x');
+    return ok ? 0 : 1;
+}
+
+void render_side_panel() {
     if (!g_drawer_open) {
         return;
     }
     ImGui::SetCursorPos(ImVec2(kMargin + kPanelW + kSpacing + kPanelW + kSpacing,
                                0.0f));
-    ImGui::BeginChild("ReceiptsDrawer", ImVec2(kDrawerW, kDrawerH), true);
-    ImGui::TextDisabled("receipts.json — read-only tail (live)");
-    // Render the upsert table (newest at bottom) as JSON-ish lines —
-    // the file re-scans at 2 Hz, so P_PENDING→DISPATCHED flips land
-    // live. Bounded per frame into the drawer snapshot buffer.
-    static char drawer_text[32768];
-    drawer_text[0] = '\0';
-    std::size_t used = 0;
-    for (std::size_t i = 0; i < g_receipts.key_count; ++i) {
-        const receipt_key_t& k = g_receipts.keys[i];
-        const int n = std::snprintf(
-            drawer_text + used, sizeof(drawer_text) - used,
-            "{\"payment_id\":\"%s\",\"tx_hash\":\"%s\",\"status\":\"%s\"}\n",
-            k.payment_id, k.tx_hash, k.status);
-        if (n < 0 || static_cast<std::size_t>(n) >= sizeof(drawer_text) - used) {
-            break; // leave NUL in place; truncation is explicit
+    ImGui::BeginChild("SidePanel", ImVec2(kDrawerW, kDrawerH), true);
+    // Two-tab panel: EDIT CONTRACT (address/value/load) | VIEW RECEIPTS
+    // (receipts.json tail). Tab state persists across hide/show.
+    if (ImGui::BeginTabBar("SideTabs", ImGuiTabBarFlags_None)) {
+        if (ImGui::BeginTabItem("EDIT CONTRACT")) {
+            ImGui::TextDisabled("CONTRACT VALUE (next invoice amount):");
+            ImGui::SetNextItemWidth(-1.0f);
+            ImGui::InputText("##contract_value", g_contract_value,
+                             static_cast<int>(sizeof(g_contract_value)),
+                             ImGuiInputTextFlags_CallbackCharFilter, digit_filter);
+            ImGui::Spacing();
+            ImGui::TextUnformatted("CURRENT:");
+            ImGui::SameLine();
+            ImGui::TextUnformatted((proc_escrow()[0] != '\0') ? proc_escrow() : "--");
+            ImGui::Spacing();
+            ImGui::TextDisabled("CONTRACT ADDRESS (edit, then APPLY):");
+            ImGui::SetNextItemWidth(-1.0f);
+            ImGui::InputText("##escrow_edit", g_address_edit,
+                             static_cast<int>(sizeof(g_address_edit)),
+                             ImGuiInputTextFlags_CallbackCharFilter,
+                             address_filter);
+            if (ImGui::Button("APPLY CONTRACT", ImVec2(-1.0f, 40.0f))) {
+                if (g_address_edit[0] == '\0') {
+                    std::snprintf(g_last_action, sizeof(g_last_action),
+                                  "APPLY — empty address");
+                } else if (proc_set_escrow(g_address_edit) == 0) {
+                    int rc = 0;
+                    if (proc_running(PROC_GATEWAY) != 0) {
+                        rc = proc_gateway_restart();
+                    }
+                    std::snprintf(g_last_action, sizeof(g_last_action),
+                                  "APPLY OK %s (%s)", proc_escrow(),
+                                  (rc == 0) ? "repoint" : "repoint failed");
+                } else {
+                    log_ring_push(&g_ring_errors, "ui",
+                                  "APPLY INVALID (need 0x?+40 hex)");
+                    std::snprintf(g_last_action, sizeof(g_last_action),
+                                  "APPLY INVALID (need 0x?+40 hex)");
+                }
+            }
+            ImGui::Spacing();
+            if (ImGui::Button("LOAD NEXT CONTRACT", ImVec2(-1.0f, 40.0f))) {
+                if (proc_anvil_start() != 0) {
+                    std::snprintf(g_last_action, sizeof(g_last_action),
+                                  "LOAD FAILED (anvil)");
+                } else if (start_async_deploy(false) == 0) {
+                    std::snprintf(g_last_action, sizeof(g_last_action),
+                                  "DEPLOYING…");
+                } else {
+                    std::snprintf(g_last_action, sizeof(g_last_action),
+                                  "DEPLOY BUSY");
+                }
+            }
+            ImGui::EndTabItem();
         }
-        used += static_cast<std::size_t>(n);
+        if (ImGui::BeginTabItem("VIEW RECEIPTS")) {
+            ImGui::TextDisabled("receipts.json — read-only tail (live)");
+            // Upsert table rendered as JSON-ish lines, newest at
+            // bottom; file re-scans at 2 Hz.
+            static char drawer_text[32768];
+            drawer_text[0] = '\0';
+            std::size_t used = 0;
+            for (std::size_t i = 0; i < g_receipts.key_count; ++i) {
+                const receipt_key_t& k = g_receipts.keys[i];
+                const int n = std::snprintf(
+                    drawer_text + used, sizeof(drawer_text) - used,
+                    "{\"payment_id\":\"%s\",\"tx_hash\":\"%s\",\"status\":\"%s\"}\n",
+                    k.payment_id, k.tx_hash, k.status);
+                if (n < 0 || static_cast<std::size_t>(n) >= sizeof(drawer_text) - used) {
+                    break; // leave NUL in place; truncation is explicit
+                }
+                used += static_cast<std::size_t>(n);
+            }
+            if (g_receipts.key_count == 0) {
+                std::snprintf(drawer_text, sizeof(drawer_text),
+                              "%s",
+                              (g_receipts.path_ok) ? "-- receipts.json empty --"
+                                                   : "-- no receipts.json yet --");
+            }
+            log_box("DrawerLog", drawer_text, ImGui::GetContentRegionAvail().y);
+            ImGui::EndTabItem();
+        }
+        ImGui::EndTabBar();
     }
-    if (g_receipts.key_count == 0) {
-        std::snprintf(drawer_text, sizeof(drawer_text),
-                      "%s",
-                      (g_receipts.path_ok) ? "-- receipts.json empty --"
-                                           : "-- no receipts.json yet --");
-    }
-    log_box("DrawerLog", drawer_text, ImGui::GetContentRegionAvail().y);
     ImGui::EndChild();
 }
 
@@ -491,8 +621,28 @@ void render_error_strip() {
     ImGui::PushStyleColor(ImGuiCol_ChildBg, kLogBg);
     ImGui::PushStyleColor(ImGuiCol_Border, kLogBorder);
     ImGui::BeginChild("ErrorStrip", ImVec2(1280.0f, kStripH), true);
-    ImGui::TextDisabled("ERRORS — all panels (live)");
-    log_ring_render(&g_ring_errors, g_errors_text, sizeof(g_errors_text));
+    // Filter tabs live on the label row — the frozen 98px strip keeps
+    // its geometry, the ring filters by source tag.
+    ImGui::TextUnformatted("ERRORS");
+    ImGui::SameLine();
+    const struct { const char* label; const char* tag; } filters[] = {
+        {"ALL", ""}, {"GATEWAY", "gw"}, {"ANVIL", "anvil"}, {"UI", "ui"}
+    };
+    for (const auto& f : filters) {
+        const bool active = (std::strcmp(g_err_filter, f.tag) == 0);
+        if (active) {
+            ImGui::PushStyleColor(ImGuiCol_Button, kBtnActive);
+        }
+        if (ImGui::SmallButton(f.label)) {
+            g_err_filter = f.tag;
+        }
+        if (active) {
+            ImGui::PopStyleColor();
+        }
+        ImGui::SameLine();
+    }
+    log_ring_render(&g_ring_errors, g_errors_text, sizeof(g_errors_text),
+                    g_err_filter);
     log_box("ErrLog", g_errors_text, 64.0f);
     ImGui::EndChild();
     ImGui::PopStyleColor(2);
@@ -686,7 +836,7 @@ int main(int, char**) {
         render_panel2();
         render_panel3();
         render_panel4();
-        render_drawer();
+        render_side_panel();
         render_error_strip();
 
         ImGui::End();

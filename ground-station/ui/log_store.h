@@ -5,9 +5,10 @@
  * License:   Apache 2.0
  * Status:    Authenticated Clean Room Spec
  * File:      log_store.h
- * Desc:      VOID-142 — bounded ring of fixed-width log lines. Render
- *            loop is single-threaded, so no locking: push from the
- *            tick drain, render via a concatenated snapshot buffer.
+ * Desc:      VOID-142 — bounded ring of fixed-width log lines with a
+ *            source tag ("gw" / "anvil" / "ui"). Render filter selects
+ *            one source or all. Single-threaded: push on tick, render
+ *            via snapshot buffer.
  * Compliant: NSA Clean C++ / SEI CERT
  * -------------------------------------------------------------------------*/
 
@@ -25,6 +26,7 @@ constexpr std::size_t kLogLineCap = 128;
 constexpr std::size_t kLogLinesMax = 64;
 
 struct log_ring_t {
+    char        tags[kLogLinesMax][8];
     char        lines[kLogLinesMax][kLogLineCap];
     std::size_t count; // lines currently stored (≤ kLogLinesMax)
     std::size_t next;  // circular write index
@@ -35,11 +37,13 @@ inline void log_ring_reset(log_ring_t* r) {
     r->count = 0;
     r->next  = 0;
     r->lines[0][0] = '\0';
+    r->tags[0][0]  = '\0';
 }
 
-// Copy `line` into the ring (NUL-terminated, truncated at kLogLineCap-1).
-inline void log_ring_push(log_ring_t* r, const char* line) {
+// Copy (tag, line) into the ring. Truncation is bounded per field.
+inline void log_ring_push(log_ring_t* r, const char* tag, const char* line) {
     if (r == nullptr || line == nullptr) return;
+    std::snprintf(r->tags[r->next], 8, "%s", (tag != nullptr) ? tag : "");
     std::snprintf(r->lines[r->next], kLogLineCap, "%s", line);
     r->next = (r->next + 1) % kLogLinesMax;
     if (r->count < kLogLinesMax) {
@@ -47,16 +51,22 @@ inline void log_ring_push(log_ring_t* r, const char* line) {
     }
 }
 
-// Concatenate oldest→newest into `out` (≤cap, always NUL-terminated).
-// Matches the frozen mockup's "newest at bottom" semantics.
-inline void log_ring_render(const log_ring_t* r, char* out, std::size_t cap) {
+// Concatenate oldest→newest into `out`, filtered by tag when `filter`
+// is non-empty ("newest at bottom" semantics preserved).
+inline void log_ring_render(const log_ring_t* r, char* out, std::size_t cap,
+                            const char* filter) {
     if (out == nullptr || cap == 0) return;
     out[0] = '\0';
     if (r == nullptr || r->count == 0) return;
+    const bool filter_on = (filter != nullptr && filter[0] != '\0');
     std::size_t used = 0;
     // Oldest is (next - count) mod kLogLinesMax.
     std::size_t idx = (r->next + kLogLinesMax - r->count) % kLogLinesMax;
     for (std::size_t i = 0; i < r->count; ++i) {
+        if (filter_on && std::strcmp(r->tags[idx], filter) != 0) {
+            idx = (idx + 1) % kLogLinesMax;
+            continue;
+        }
         const char* line = r->lines[idx];
         const std::size_t len = std::strlen(line);
         if (used + len + 2 > cap) {
