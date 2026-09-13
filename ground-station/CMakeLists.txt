@@ -221,6 +221,9 @@ if(VOID_BUILD_UI)
     add_executable(ground_station_ui
         ui/main.cpp
         ui/proc_manager.cpp
+        ui/http_poller.cpp
+        ui/service_poller.cpp
+        ui/receipts_tailer.cpp
     )
 
     target_include_directories(ground_station_ui PRIVATE

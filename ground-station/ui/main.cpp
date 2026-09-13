@@ -19,6 +19,9 @@
 #include "imgui_impl_opengl3.h"
 
 #include "proc_manager.h"
+#include "log_store.h"
+#include "service_poller.h"
+#include "receipts_tailer.h"
 
 #if defined(__APPLE__)
 #define GL_SILENCE_DEPRECATION
@@ -92,7 +95,8 @@ const ImVec4& state_color(const LegState s) {
     }
 }
 
-// --- Sample content (spec section 6.1, verbatim) ---
+// --- Sample content (spec section 6.1) — only the RF sample remains;
+//     Panels 2/3 + drawer + error strip are live rings (VOID-142 1c). ---
 const char* kLogRf =
     "10:14:02  A     Invoice TX'd                 apid=100 len=80\n"
     "10:14:05  B     Payment RX                   sig OK\n"
@@ -102,34 +106,6 @@ const char* kLogRf =
     "10:14:15  C     Receipt dispatched           apid=100 len=112\n"
     "10:14:18  D     Delivery RX                  CRC OK\n"
     "10:15:23  HB    heartbeat                    VBAT=3980mV T=38C";
-
-const char* kLogHttp =
-    "10:14:05  200  POST  /api/v1/ingest    packetb.enqueued\n"
-    "10:14:12  200  GET   /pending          receipts=true\n"
-    "10:14:14  200  POST  /ack              status=dispatched\n"
-    "10:14:15  200  GET   /pending          receipts=false\n"
-    "10:15:02  200  GET   /api/v1/status\n"
-    "10:15:47  400  POST  /api/v1/ingest    sig fail";
-
-const char* kLogChain =
-    "10:14:12  block 2 mined\n"
-    "10:14:12  tx 0xb21f  settleBatch()            escrow\n"
-    "10:14:12  event SettlementCreated             block=2";
-
-const char* kLogErrors =
-    "10:15:47  gw      packetb.sig_fail — 400 (bad Ed25519 sig)\n"
-    "10:15:12  chain   escrow submit retry #1 (RPC timeout)\n"
-    "10:14:59  rf      PacketA CRC fail — frame dropped";
-
-const char* kReceiptsTail =
-    "{\"payment_id\":\"d78a91\",\"tx_hash\":\"0x2b3c\",\"status\":\"DISPATCHED\"}\n"
-    "{\"payment_id\":\"c3d4e5\",\"tx_hash\":\"0x9f8e\",\"status\":\"DISPATCHED\"}\n"
-    "{\"payment_id\":\"f0a1b2\",\"tx_hash\":\"0x5d6c\",\"status\":\"PENDING\"}\n"
-    "{\"payment_id\":\"708a9b\",\"tx_hash\":\"0x1a2b\",\"status\":\"DISPATCHED\"}\n"
-    "{\"payment_id\":\"4d5e6f\",\"tx_hash\":\"0x77cc\",\"status\":\"DISPATCHED\"}\n"
-    "{\"payment_id\":\"9c0d1e\",\"tx_hash\":\"0xa1e2\",\"status\":\"PENDING\"}\n"
-    "{\"payment_id\":\"e5f6a7\",\"tx_hash\":\"0xc3a9\",\"status\":\"DISPATCHED\"}\n"
-    "{\"payment_id\":\"a1b2c3\",\"tx_hash\":\"0xb21f\",\"status\":\"DISPATCHED\"}";
 
 const char* kHelpRunbook =
     "1. Set CONTRACT VALUE        (amount for the next invoice)\n"
@@ -159,6 +135,83 @@ const char* kHelpGate =
     "Passes 10/10 · Tamper rejects visible · Restart-safe:\n"
     "a full demo pass is one clean A → B → ACK → SETTLE → C → D run.\n"
     "10 consecutive passes = flat-sat alpha done.";
+
+// --- Live service state (VOID-142 1c) ---
+service_view_t  g_service = {};
+receipts_view_t g_receipts = {};
+log_ring_t      g_ring_http  = {};
+log_ring_t      g_ring_chain = {};
+log_ring_t      g_ring_errors = {};
+double          g_last_poll  = 0.0;
+
+// Child-pipe line assembly: chunks arrive arbitrarily framed, we split
+// complete '\n'-terminated lines here before ringing them.
+char g_asm[PROC_COUNT][512];
+std::size_t g_asm_len[PROC_COUNT] = {0, 0, 0};
+
+// Rendered snapshots for the ring-backed log_box panels. Sized to hold
+// all 64 ring lines (worst case 64×128 = 8192, plus margin).
+char g_http_text[8448]  = "";
+char g_chain_text[8448] = "";
+char g_errors_text[8448] = "";
+
+// Route one completed child-output line into the right rings. Gateway
+// lines also feed the chain panel when they carry settlement keywords;
+// warn/error-ish lines from any child mirror into the error strip.
+void route_child_line(int id, const char* line) {
+    if (id == PROC_GATEWAY) {
+        log_ring_push(&g_ring_http, line);
+        if (std::strstr(line, "settlebatch") != nullptr ||
+            std::strstr(line, "receipt.persisted") != nullptr ||
+            std::strstr(line, "escrow") != nullptr ||
+            std::strstr(line, "block") != nullptr) {
+            log_ring_push(&g_ring_chain, line);
+        }
+    } else if (id == PROC_ANVIL) {
+        log_ring_push(&g_ring_chain, line);
+    }
+    if (std::strstr(line, "level=warn") != nullptr ||
+        std::strstr(line, "level=error") != nullptr ||
+        std::strstr(line, "REJECTED") != nullptr ||
+        std::strstr(line, "sig_fail") != nullptr ||
+        std::strstr(line, "failed") != nullptr ||
+        std::strstr(line, "⛔") != nullptr ||
+        std::strstr(line, "ERROR") != nullptr) {
+        log_ring_push(&g_ring_errors, line);
+    }
+}
+
+// Drain each child's non-blocking pipe and split into lines.
+void drain_child_pipes() {
+    char chunk[257];
+    for (int id = 0; id < PROC_COUNT; ++id) {
+        int n = proc_drain_log(id, chunk, sizeof(chunk));
+        if (n <= 0) {
+            continue;
+        }
+        for (int i = 0; i < n; ++i) {
+            const char c = chunk[i];
+            if (c == '\n') {
+                g_asm[id][g_asm_len[id]] = '\0';
+                route_child_line(id, g_asm[id]);
+                g_asm_len[id] = 0;
+            } else if (g_asm_len[id] < sizeof(g_asm[id]) - 1) {
+                g_asm[id][g_asm_len[id]++] = c;
+            }
+        }
+    }
+}
+
+void tick_services() {
+    drain_child_pipes();
+    // Service polls at 2 Hz — cheap round trips, keeps the readout
+    // fresh without throttling the frame rate.
+    if (ImGui::GetTime() - g_last_poll >= 0.5) {
+        service_poll_tick(&g_service);
+        receipts_tail_tick(&g_receipts);
+        g_last_poll = ImGui::GetTime();
+    }
+}
 
 // --- Inert UI state (spec section 6.4) ---
 bool g_drawer_open       = false;
@@ -258,16 +311,30 @@ void render_panel2() {
     begin_panel("PanelGoServer", kMargin + kPanelW + kSpacing, kMargin);
     panel_title("2. Go Server (Gateway)", true);
     ImGui::Separator();
-    ImGui::TextUnformatted(
-        "Status:           UNCONNECTED\n"
-        "Packets in:       --\n"
-        "Sig verify ok:    --\n"
-        "Sig verify fail:  --\n"
-        "Intents queued:   --\n"
-        "Receipts PENDING: --\n"
-        "Receipts SENT:    --");
-    ImGui::TextDisabled("HTTP LOG (sample)");
-    log_box("GwLog", kLogHttp, ImGui::GetContentRegionAvail().y);
+    // VOID-142 1c: live status fields from GET /api/v1/status (2 Hz).
+    // Fixed 18ch label column, one bounded line per field.
+    char line[48];
+    ImGui::TextUnformatted("Status:");
+    ImGui::SameLine();
+    ImGui::SetCursorPosX(20.0f + ImGui::CalcTextSize("Sig verify fail:").x);
+    ImGui::TextColored((g_service.gw_connected != 0) ? kStateOk : kTextDim,
+                       "%s",
+                       (g_service.gw_connected != 0) ? "CONNECTED" : "UNCONNECTED");
+    std::snprintf(line, sizeof(line), "Packets in:     %ld", g_service.packets_in);
+    ImGui::TextUnformatted(line);
+    std::snprintf(line, sizeof(line), "Sig verify ok:  %ld", g_service.sig_ok);
+    ImGui::TextUnformatted(line);
+    std::snprintf(line, sizeof(line), "Sig verify fail:%ld", g_service.sig_fail);
+    ImGui::TextUnformatted(line);
+    std::snprintf(line, sizeof(line), "Intents queued: %ld", g_service.intents_queued);
+    ImGui::TextUnformatted(line);
+    std::snprintf(line, sizeof(line), "Receipts PENDING:%ld", g_service.receipts_pending);
+    ImGui::TextUnformatted(line);
+    std::snprintf(line, sizeof(line), "Receipts SENT:  %ld", g_service.receipts_dispatched);
+    ImGui::TextUnformatted(line);
+    ImGui::TextDisabled("HTTP LOG (live)");
+    log_ring_render(&g_ring_http, g_http_text, sizeof(g_http_text));
+    log_box("GwLog", g_http_text, ImGui::GetContentRegionAvail().y);
     ImGui::EndChild();
 }
 
@@ -275,15 +342,27 @@ void render_panel3() {
     begin_panel("PanelL2Chain", kMargin, kMargin + kPanelH + kSpacing);
     panel_title("3. L2 Blockchain (Anvil)", true);
     ImGui::Separator();
-    // VOID-142 stage-1: Contract field is live (proc_escrow); the rest
-    // comes online in the 1c poll pass.
-    ImGui::TextUnformatted("Status:      UNCONNECTED");
-    ImGui::TextUnformatted("Block:       --");
-    ImGui::Text("Contract:    %s",
-               (proc_escrow()[0] != '\0') ? proc_escrow() : "--");
-    ImGui::TextUnformatted("Settlements: --");
-    ImGui::TextDisabled("BLOCKCHAIN LOG (sample — newest at bottom)");
-    log_box("L2Log", kLogChain, ImGui::GetContentRegionAvail().y);
+    // VOID-142 1c: Status/Block from eth_blockNumber; Contract from the
+    // LOAD flow; Settlements from the receipts upsert table.
+    char line[48];
+    ImGui::TextUnformatted("Status:");
+    ImGui::SameLine();
+    ImGui::SetCursorPosX(20.0f + ImGui::CalcTextSize("Settlements:").x);
+    ImGui::TextColored((g_service.chain_connected != 0) ? kStateOk : kTextDim,
+                       "%s",
+                       (g_service.chain_connected != 0) ? "CONNECTED" : "UNCONNECTED");
+    std::snprintf(line, sizeof(line), "Block:      %s",
+                  (g_service.block_dec[0] != '\0') ? g_service.block_dec : "--");
+    ImGui::TextUnformatted(line);
+    std::snprintf(line, sizeof(line), "Contract:   %s",
+                  (proc_escrow()[0] != '\0') ? proc_escrow() : "--");
+    ImGui::TextUnformatted(line);
+    std::snprintf(line, sizeof(line), "Settlements: %u",
+                  static_cast<unsigned>(g_receipts.settlements));
+    ImGui::TextUnformatted(line);
+    ImGui::TextDisabled("BLOCKCHAIN LOG (live — newest at bottom)");
+    log_ring_render(&g_ring_chain, g_chain_text, sizeof(g_chain_text));
+    log_box("L2Log", g_chain_text, ImGui::GetContentRegionAvail().y);
     ImGui::EndChild();
 }
 
@@ -379,8 +458,31 @@ void render_drawer() {
     ImGui::SetCursorPos(ImVec2(kMargin + kPanelW + kSpacing + kPanelW + kSpacing,
                                0.0f));
     ImGui::BeginChild("ReceiptsDrawer", ImVec2(kDrawerW, kDrawerH), true);
-    ImGui::TextDisabled("receipts.json — read-only tail (sample)");
-    log_box("DrawerLog", kReceiptsTail, ImGui::GetContentRegionAvail().y);
+    ImGui::TextDisabled("receipts.json — read-only tail (live)");
+    // Render the upsert table (newest at bottom) as JSON-ish lines —
+    // the file re-scans at 2 Hz, so P_PENDING→DISPATCHED flips land
+    // live. Bounded per frame into the drawer snapshot buffer.
+    static char drawer_text[32768];
+    drawer_text[0] = '\0';
+    std::size_t used = 0;
+    for (std::size_t i = 0; i < g_receipts.key_count; ++i) {
+        const receipt_key_t& k = g_receipts.keys[i];
+        const int n = std::snprintf(
+            drawer_text + used, sizeof(drawer_text) - used,
+            "{\"payment_id\":\"%s\",\"tx_hash\":\"%s\",\"status\":\"%s\"}\n",
+            k.payment_id, k.tx_hash, k.status);
+        if (n < 0 || static_cast<std::size_t>(n) >= sizeof(drawer_text) - used) {
+            break; // leave NUL in place; truncation is explicit
+        }
+        used += static_cast<std::size_t>(n);
+    }
+    if (g_receipts.key_count == 0) {
+        std::snprintf(drawer_text, sizeof(drawer_text),
+                      "%s",
+                      (g_receipts.path_ok) ? "-- receipts.json empty --"
+                                           : "-- no receipts.json yet --");
+    }
+    log_box("DrawerLog", drawer_text, ImGui::GetContentRegionAvail().y);
     ImGui::EndChild();
 }
 
@@ -389,8 +491,9 @@ void render_error_strip() {
     ImGui::PushStyleColor(ImGuiCol_ChildBg, kLogBg);
     ImGui::PushStyleColor(ImGuiCol_Border, kLogBorder);
     ImGui::BeginChild("ErrorStrip", ImVec2(1280.0f, kStripH), true);
-    ImGui::TextDisabled("ERRORS — all panels (sample)");
-    log_box("ErrLog", kLogErrors, 64.0f);
+    ImGui::TextDisabled("ERRORS — all panels (live)");
+    log_ring_render(&g_ring_errors, g_errors_text, sizeof(g_errors_text));
+    log_box("ErrLog", g_errors_text, 64.0f);
     ImGui::EndChild();
     ImGui::PopStyleColor(2);
 }
@@ -567,6 +670,7 @@ int main(int, char**) {
         ImGui::NewFrame();
 
         tick_run_clock();
+        tick_services(); // drains child pipes + 2 Hz service polls (VOID-142)
 
         ImGui::SetNextWindowPos(ImVec2(0.0f, 0.0f));
         ImGui::SetNextWindowSize(io.DisplaySize);
