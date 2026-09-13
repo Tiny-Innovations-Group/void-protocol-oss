@@ -101,6 +101,7 @@ func enqueueSettlementIntent(b *protocol.VoidProtocol_PacketBBody) {
 		Wallet:  common.HexToAddress(satRec.Wallet),
 	}
 	Submitter.Enqueue(intent)
+	intentsQueued.Add(1) // VOID-142 status endpoint
 	log.Printf(
 		"level=info event=packetb.enqueued sat_id=%d amount=%d asset_id=%d nonce=%s wallet=%s",
 		b.SatId, amount, assetID, intent.TxNonce.String(), intent.Wallet.Hex(),
@@ -229,10 +230,12 @@ func handlePayloadBody(body interface{}, rawData *[]byte, c *gin.Context, packet
 		// log stream. Not 401: 401 would imply an auth challenge the
 		// sender could retry; a bad signature is a content defect.
 		if err := security.VerifyPacketSignature(b.SatId, messageBytes, b.Signature.Raw); err != nil {
+			sigVerifyFail.Add(1) // VOID-142 status endpoint
 			log.Printf("level=warn event=packetb.sig_fail sat_id=%d err=%q", b.SatId, err.Error())
 			c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"error": "Invalid Cryptographic Signature"})
 			return true // ⛔ BOUNCE THE HACKER
 		}
+		sigVerifyOK.Add(1) // VOID-142 status endpoint
 		// VOID-052: once structurally sound and sig-verified, hand the
 		// settlement intent to the BufferedSubmitter (or a test mock).
 		// nil Submitter = "no on-chain pipeline wired" — still a valid
@@ -364,6 +367,7 @@ func IngestPacket(c *gin.Context) {
 		c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"error": "Missing binary payload"})
 		return
 	}
+	packetsIn.Add(1) // VOID-142 status endpoint
 
 	// 2. Pass the raw bytes into the Kaitai Parser
 	stream := kaitai.NewStream(bytes.NewReader(rawData))
