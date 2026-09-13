@@ -5,9 +5,10 @@
  * License:   Apache 2.0
  * Status:    Authenticated Clean Room Spec
  * File:      proc_manager.h
- * Desc:      VOID-142 stage-1 — child process lifecycle for the operator
- *            console: anvil, gateway, (bouncer reserved for stage 2),
- *            forge contract deploy. Static storage only, POSIX.
+ * Desc:      VOID-142 stages 1-2 — child process lifecycle for the
+ *            operator console: anvil, gateway, bouncer (piped
+ *            stdin/stdout), forge contract deploy. Static storage
+ *            only, POSIX.
  * Compliant: NSA Clean C++ / SEI CERT
  * -------------------------------------------------------------------------*/
 
@@ -16,8 +17,8 @@
 
 #include <cstddef>
 
-// Child slots. PROC_BOUNCER is reserved for VOID-142 stage 2 (serial
-// wiring) — the slot exists so the table shape is stable now.
+// Child slots. PROC_BOUNCER is the VOID-142 stage-2 serial wiring
+// child (piped stdin/stdout — Panel 1's live data source).
 enum proc_id_t {
     PROC_ANVIL = 0,
     PROC_GATEWAY,
@@ -51,6 +52,20 @@ int proc_gateway_start(void);
 // Restart the gateway on the current contract (APPLY / post-deploy
 // re-point). Returns 0/-1.
 int proc_gateway_restart(void);
+
+// VOID-142 stage-2: spawn the ground-station bouncer binary
+// (<repo root>/ground-station/build/ground_station) with piped stdin
+// and the same merged stdout/stderr log pipe as the other children.
+// serial_port NULL or "" spawns bare (test mode — 'tst_ack' path, no
+// USB radio). Idempotent: returns 0 immediately when already running.
+// Returns 0 on spawn, -1 on failure (no repo root / binary missing).
+int proc_bouncer_start(const char* serial_port);
+
+// Write a NUL-terminated string verbatim to a child's stdin pipe
+// (e.g. "ack\n" to the bouncer's CLI listener). SIGPIPE is already
+// ignored by proc_init(), so a dead child surfaces as -1 (EPIPE).
+// Returns 0 on full write, -1 on bad id / no stdin pipe / short write.
+int proc_stdin_write(int id, const char* data);
 
 // Pure forge worker: run `forge create src/Escrow.sol:Escrow` and copy
 // the "Deployed to:" address into out_addr. Thread-safe by contract —

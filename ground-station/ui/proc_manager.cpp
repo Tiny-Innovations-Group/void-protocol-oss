@@ -5,9 +5,9 @@
  * License:   Apache 2.0
  * Status:    Authenticated Clean Room Spec
  * File:      proc_manager.cpp
- * Desc:      VOID-142 stage-1 — child process lifecycle (posix_spawn,
- *            process-group kill, non-blocking log pipes). POSIX only;
- *            Win32 stubs keep the UI target portable.
+ * Desc:      VOID-142 stages 1-2 — child process lifecycle (posix_spawn,
+ *            process-group kill, non-blocking log pipes, bouncer stdin
+ *            pipe). POSIX only; Win32 stubs keep the UI target portable.
  * Compliant: NSA Clean C++ / SEI CERT
  * -------------------------------------------------------------------------*/
 
@@ -38,12 +38,14 @@ struct proc_slot_t {
     const char* name;
     pid_t       pid;
     int         log_fd;
+    int         in_fd; // VOID-142 stage-2: stdin WRITE end the parent
+                       // keeps (-1 when the child has no stdin pipe)
 };
 
 proc_slot_t g_procs[PROC_COUNT] = {
-    {"anvil",   0, -1},
-    {"gateway", 0, -1},
-    {"bouncer", 0, -1},
+    {"anvil",   0, -1, -1},
+    {"gateway", 0, -1, -1},
+    {"bouncer", 0, -1, -1},
 };
 
 char g_repo_root[1024] = "";
@@ -150,6 +152,71 @@ int spawn_service(const int id, char* const argv[], const char* cwd,
     proc_slot_t& slot = g_procs[id];
     slot.pid = pid;
     slot.log_fd = pipefd[0];
+    return 0;
+}
+
+// VOID-142 stage-2: spawn_service variant that ALSO wires a stdin pipe
+// (bouncer CLI listener). The child dup2's the read end onto
+// STDIN_FILENO and closes the write end (so it sees EOF when the
+// parent stops writing); the parent keeps the WRITE end in slot.in_fd,
+// deliberately left BLOCKING so proc_stdin_write either lands whole or
+// fails. The merged stdout/stderr log pipe behaves exactly like
+// spawn_service's. spawn_service itself is untouched — the anvil and
+// gateway paths stay byte-identical.
+int spawn_service_stdin(const int id, char* const argv[], const char* cwd,
+                        char* const envp[]) {
+    int in_pipe[2];
+    int log_pipe[2];
+    if (pipe(in_pipe) != 0) {
+        return -1;
+    }
+    if (pipe(log_pipe) != 0) {
+        close(in_pipe[0]);
+        close(in_pipe[1]);
+        return -1;
+    }
+    posix_spawn_file_actions_t fa;
+    posix_spawn_file_actions_init(&fa);
+    // stdin: child reads the pipe, parent holds the only write end.
+    posix_spawn_file_actions_adddup2(&fa, in_pipe[0], STDIN_FILENO);
+    posix_spawn_file_actions_addclose(&fa, in_pipe[1]);
+    // merged stdout/stderr → log pipe, same as spawn_service.
+    posix_spawn_file_actions_adddup2(&fa, log_pipe[1], STDOUT_FILENO);
+    posix_spawn_file_actions_adddup2(&fa, log_pipe[1], STDERR_FILENO);
+    posix_spawn_file_actions_addclose(&fa, log_pipe[0]);
+    if (cwd != nullptr) {
+#if defined(__APPLE__)
+        // macOS 26 renamed addchdir_np → addchdir; same semantics.
+        posix_spawn_file_actions_addchdir(&fa, cwd);
+#else
+        posix_spawn_file_actions_addchdir_np(&fa, cwd);
+#endif
+    }
+    posix_spawnattr_t attr;
+    posix_spawnattr_init(&attr);
+    posix_spawnattr_setflags(&attr, POSIX_SPAWN_SETPGROUP);
+    posix_spawnattr_setpgroup(&attr, 0); // child leads its own group
+
+    pid_t pid = 0;
+    // envp == nullptr → child inherits the parent's environment.
+    const int rc = posix_spawnp(&pid, argv[0], &fa, &attr, argv, envp);
+    posix_spawn_file_actions_destroy(&fa);
+    posix_spawnattr_destroy(&attr);
+    // Parent drops every pipe end it will not use.
+    close(in_pipe[0]);
+    close(log_pipe[1]);
+    if (rc != 0) {
+        close(in_pipe[1]);
+        close(log_pipe[0]);
+        return -1;
+    }
+    // Non-blocking log read end (UI polls per frame); blocking stdin
+    // write end (SEND ACK must not spin on partial writes).
+    fcntl(log_pipe[0], F_SETFL, O_NONBLOCK);
+    proc_slot_t& slot = g_procs[id];
+    slot.pid = pid;
+    slot.log_fd = log_pipe[0];
+    slot.in_fd = in_pipe[1];
     return 0;
 }
 
@@ -337,6 +404,69 @@ int proc_gateway_restart(void) {
     return proc_gateway_start();
 }
 
+// VOID-142 stage-2: bouncer child #3 — the ground-station binary with
+// a piped stdin (Panel 1 SEND ACK writes "ack\n" to its CLI listener)
+// and the usual merged stdout/stderr log pipe. serial_port NULL or ""
+// spawns bare (test mode — 'tst_ack' path, no USB radio).
+int proc_bouncer_start(const char* serial_port) {
+    proc_init();
+    if (proc_running(PROC_BOUNCER) != 0) {
+        return 0; // idempotent, like the other children
+    }
+    if (g_repo_root[0] == '\0') {
+        return -1;
+    }
+    char path[1100];
+    std::snprintf(path, sizeof(path),
+                  "%s/ground-station/build/ground_station", g_repo_root);
+    if (access(path, X_OK) != 0) {
+        return -1; // bouncer binary not built
+    }
+    // argv[1] carries the serial port only when supplied.
+    char* argv[3];
+    int argc = 0;
+    argv[argc++] = path;
+    if (serial_port != nullptr && serial_port[0] != '\0') {
+        argv[argc++] = const_cast<char*>(serial_port);
+    }
+    argv[argc] = nullptr;
+    if (spawn_service_stdin(PROC_BOUNCER, argv, g_repo_root, nullptr) != 0) {
+        // The spawner closed every fd it created on its failure paths;
+        // reset the slot so no stale fd can survive a failed spawn.
+        proc_slot_t& slot = g_procs[PROC_BOUNCER];
+        slot.pid = 0;
+        if (slot.log_fd >= 0) {
+            close(slot.log_fd);
+            slot.log_fd = -1;
+        }
+        if (slot.in_fd >= 0) {
+            close(slot.in_fd);
+            slot.in_fd = -1;
+        }
+        return -1;
+    }
+    return 0;
+}
+
+// VOID-142 stage-2: verbatim write to a child's stdin pipe. SIGPIPE is
+// already ignored by proc_init(), so a dead child surfaces as -1
+// (EPIPE / short write) instead of taking the console down.
+int proc_stdin_write(const int id, const char* data) {
+    if (data == nullptr || id < 0 || id >= PROC_COUNT) {
+        return -1;
+    }
+    proc_slot_t& slot = g_procs[id];
+    if (slot.in_fd < 0) {
+        return -1; // this child has no stdin pipe
+    }
+    const std::size_t len = std::strlen(data);
+    const ssize_t w = write(slot.in_fd, data, len);
+    if (w < 0 || static_cast<std::size_t>(w) != len) {
+        return -1; // EPIPE or short write
+    }
+    return 0;
+}
+
 // Pure forge worker: spawn → drain → parse → out_addr. Thread-safe by
 // contract — it never touches the child slot table (anvil must be up
 // before the worker starts; chain logic stays on the render thread).
@@ -427,6 +557,10 @@ int proc_running(const int id) {
             close(slot.log_fd);
             slot.log_fd = -1;
         }
+        if (slot.in_fd >= 0) {
+            close(slot.in_fd);
+            slot.in_fd = -1;
+        }
         return 0;
     }
     return 1;
@@ -456,6 +590,10 @@ int proc_stop(const int id) {
     if (slot.log_fd >= 0) {
         close(slot.log_fd);
         slot.log_fd = -1;
+    }
+    if (slot.in_fd >= 0) {
+        close(slot.in_fd);
+        slot.in_fd = -1;
     }
     return -1; // needed the escalation
 }
@@ -494,6 +632,8 @@ void proc_init(void) {}
 const char* proc_repo_root(void) { return ""; }
 int proc_anvil_start(void) { return -1; }
 int proc_gateway_start(void) { return -1; }
+int proc_bouncer_start(const char*) { return -1; }
+int proc_stdin_write(int, const char*) { return -1; }
 int proc_deploy_contract(void) { return -1; }
 const char* proc_escrow(void) { return ""; }
 int proc_running(int) { return 0; }

@@ -6,8 +6,9 @@
  * Status:    Authenticated Clean Room Spec
  * File:      main.cpp
  * Desc:      VOID-141 operator console — full port of frozen mockup design
- *            (docs/VOID-141_IMGUI_PORT_SPEC.md). Inert sample data only;
- *            stack wiring is a later stage.
+ *            (docs/VOID-141_IMGUI_PORT_SPEC.md). All panels live-wired
+ *            (VOID-142 stages 1-2): child pipes → rings → panels; Panel 1
+ *            RF legs + gate fed by the bouncer's stdout (stage 2).
  * Compliant: NSA Clean C++ / SEI CERT
  * -------------------------------------------------------------------------*/
 
@@ -87,6 +88,16 @@ Leg kLegs[] = {
 };
 constexpr size_t kLegCount = sizeof(kLegs) / sizeof(kLegs[0]);
 
+// Leg positions (kLegs order) — VOID-142 stage-2 addresses legs by
+// index (FSM + gateway milestone keywords know positions, not names).
+constexpr size_t kLegA      = 0;
+constexpr size_t kLegB      = 1;
+constexpr size_t kLegAck    = 2;
+constexpr size_t kLegSettle = 3;
+constexpr size_t kLegC      = 4;
+constexpr size_t kLegD      = 5;
+constexpr size_t kLegHb     = 6;
+
 const ImVec4& state_color(const LegState s) {
     switch (s) {
         case LegState::Active: return kBtnHover;
@@ -97,17 +108,13 @@ const ImVec4& state_color(const LegState s) {
     }
 }
 
-// --- Sample content (spec section 6.1) — only the RF sample remains;
-//     Panels 2/3 + drawer + error strip are live rings (VOID-142 1c). ---
-const char* kLogRf =
-    "10:14:02  A     Invoice TX'd                 apid=100 len=80\n"
-    "10:14:05  B     Payment RX                   sig OK\n"
-    "10:14:06  ACK   Buyer ack TX'd               apid=101 len=136\n"
-    "10:14:12  SETTLE settleBatch block=2          tx=0xb21f...\n"
-    "10:14:14  C     Receipt built                status=PENDING\n"
-    "10:14:15  C     Receipt dispatched           apid=100 len=112\n"
-    "10:14:18  D     Delivery RX                  CRC OK\n"
-    "10:15:23  HB    heartbeat                    VBAT=3980mV T=38C";
+// VOID-142 stage-2: leg-state setter, index addressed. Moved into the
+// namespace now that real callers exist (rf_update_legs + the gateway
+// milestone keywords in route_child_line).
+void set_leg_state(const size_t idx, const LegState state) {
+    if (idx >= kLegCount) return;
+    kLegs[idx].state = state;
+}
 
 const char* kHelpRunbook =
     "1. Set CONTRACT VALUE        (amount for the next invoice)\n"
@@ -197,11 +204,17 @@ service_view_t  g_service = {};
 receipts_view_t g_receipts = {};
 log_ring_t      g_ring_http  = {};
 log_ring_t      g_ring_chain = {};
+log_ring_t      g_ring_rf    = {}; // VOID-142 stage-2: bouncer stdout
 log_ring_t      g_ring_errors = {};
 log_ring_t      g_ring_cmds   = {}; // executed forge queries (raw)
 double          g_last_poll  = 0.0;
 
-// Errors filter tab. "" = ALL, else a ring tag ("gw" / "anvil" / "ui").
+// --- Panel-1 gate state (VOID-142 stage-2) ---
+int  g_passes         = 0; // clean A→B→ACK→SETTLE→C→D runs (10 = gate)
+int  g_tamper_rejects = 0; // [BOUNCER] ❌ drops (each resets the run)
+char g_serial_port[64] = "/dev/cu.usbserial-0001"; // Panel-4 bouncer arg
+
+// Errors filter tab. "" = ALL, else a ring tag ("gw" / "anvil" / "rf" / "ui").
 const char* g_err_filter = "";
 
 // Async deploy worker (VOID-142): forge runs detached so the UI never
@@ -238,14 +251,72 @@ std::size_t g_asm_len[PROC_COUNT] = {0, 0, 0};
 // all 64 ring lines (worst case 64×128 = 8192, plus margin).
 char g_http_text[8448]  = "";
 char g_chain_text[8448] = "";
+char g_rf_text[8448]    = ""; // VOID-142 stage-2: Panel-1 RF log
 char g_errors_text[8448] = "";
 char g_cmds_text[8448]  = "";
 
+// VOID-142 stage-2: Panel-1 leg FSM — one bouncer stdout line in, leg
+// states out. Triggers are the bouncer's exact printed literals
+// (ground-station/src/main.cpp): [HARDWARE] invoice / payment lines,
+// [BOUNCER] verify, [ACK] downlink emit, [EGRESS] receipt dispatch,
+// [TELEMETRY] heartbeat and the [SAT-B] echo of the buyer's
+// PACKET_D_RX diagnostic. Emoji literals are byte-matched (⚠ without
+// VS16 still prefixes the ⚠️ form the bouncer prints). A clean
+// A→B→ACK→SETTLE→C→D run closes on the D line: count it, then reset
+// the commerce legs — HB is ambient and keeps its state (kHelpGate).
+void rf_update_legs(const char* line) {
+    if (line == nullptr) return;
+    if (std::strstr(line, "Packet A (Invoice)") != nullptr) {
+        set_leg_state(kLegA, LegState::Active);
+    }
+    if (std::strstr(line, "Received PACKET B") != nullptr) {
+        set_leg_state(kLegA, LegState::Ok);
+        set_leg_state(kLegB, LegState::Active);
+    }
+    if (std::strstr(line, "[BOUNCER] ✅") != nullptr) {
+        set_leg_state(kLegB, LegState::Ok);
+    }
+    if (std::strstr(line, "[BOUNCER] ❌") != nullptr) {
+        set_leg_state(kLegB, LegState::Fail);
+        ++g_tamper_rejects;
+        g_passes = 0; // FAIL resets the pass counter (kHelpStates)
+    }
+    if (std::strstr(line, "[ACK] ✅") != nullptr) {
+        set_leg_state(kLegAck, LegState::Ok);
+    }
+    if (std::strstr(line, "[ACK] ⚠") != nullptr) {
+        set_leg_state(kLegAck, LegState::Active); // emit failed, retryable
+    }
+    if (std::strstr(line, "[EGRESS] ✅ Dispatched") != nullptr) {
+        set_leg_state(kLegC, LegState::Ok);
+    }
+    if (std::strstr(line, "PACKET_D") != nullptr) {
+        set_leg_state(kLegD, LegState::Ok);
+        if (kLegs[kLegA].state == LegState::Ok &&
+            kLegs[kLegB].state == LegState::Ok &&
+            kLegs[kLegAck].state == LegState::Ok &&
+            kLegs[kLegSettle].state == LegState::Ok &&
+            kLegs[kLegC].state == LegState::Ok) {
+            ++g_passes; // one clean A→B→ACK→SETTLE→C→D run
+            set_leg_state(kLegA, LegState::Idle);
+            set_leg_state(kLegB, LegState::Idle);
+            set_leg_state(kLegAck, LegState::Idle);
+            set_leg_state(kLegSettle, LegState::Idle);
+            set_leg_state(kLegC, LegState::Idle);
+            set_leg_state(kLegD, LegState::Idle);
+        }
+    }
+    if (std::strstr(line, "Heartbeat forwarded") != nullptr) {
+        set_leg_state(kLegHb, LegState::Ok);
+    }
+}
+
 // Route one completed child-output line into the right rings, tagged
-// by source ("gw" / "anvil" / "ui"). "gw" lines fill the HTTP log;
-// "anvil" fills the chain log; settlement keywords on a "gw" line
-// mirror into the chain log too; warn/error-ish lines from any
-// source mirror into the error strip.
+// by source ("gw" / "anvil" / "rf" / "ui"). "gw" lines fill the HTTP
+// log; "anvil" fills the chain log; settlement keywords on a "gw" line
+// mirror into the chain log too; "rf" (bouncer) lines fill the Panel-1
+// RF log and drive its leg FSM; warn/error-ish lines from any source
+// mirror into the error strip.
 void route_child_line(const char* tag, const char* line) {
     if (tag == nullptr || line == nullptr) return;
     if (std::strcmp(tag, "gw") == 0) {
@@ -256,8 +327,22 @@ void route_child_line(const char* tag, const char* line) {
             std::strstr(line, "block") != nullptr) {
             log_ring_push(&g_ring_chain, tag, line);
         }
+        // VOID-142 stage-2: gateway milestones drive Panel-1 legs.
+        // settlebatch.ok (not the .fail/.drop variants) closes SETTLE;
+        // receipt.persisted puts C in flight (EGRESS ✅ Dispatched
+        // closes it).
+        if (std::strstr(line, "settlebatch.ok") != nullptr) {
+            set_leg_state(kLegSettle, LegState::Ok);
+        }
+        if (std::strstr(line, "receipt.persisted") != nullptr) {
+            set_leg_state(kLegC, LegState::Active);
+        }
     } else if (std::strcmp(tag, "anvil") == 0) {
         log_ring_push(&g_ring_chain, tag, line);
+    } else if (std::strcmp(tag, "rf") == 0) {
+        // VOID-142 stage-2: bouncer stdout → Panel-1 RF log + leg FSM.
+        log_ring_push(&g_ring_rf, tag, line);
+        rf_update_legs(line);
     }
     if (std::strstr(line, "level=warn") != nullptr ||
         std::strstr(line, "level=error") != nullptr ||
@@ -265,6 +350,7 @@ void route_child_line(const char* tag, const char* line) {
         std::strstr(line, "sig_fail") != nullptr ||
         std::strstr(line, "failed") != nullptr ||
         std::strstr(line, "⛔") != nullptr ||
+        std::strstr(line, "❌") != nullptr || // VOID-142 stage-2: bouncer drops
         std::strstr(line, "ERROR") != nullptr) {
         log_ring_push(&g_ring_errors, tag, line);
     }
@@ -278,8 +364,10 @@ void drain_child_pipes() {
         if (n <= 0) {
             continue;
         }
+        // VOID-142 stage-2: bouncer stdout carries the "rf" tag (Panel 1).
         const char* tag = (id == PROC_GATEWAY) ? "gw" :
-                          (id == PROC_ANVIL)   ? "anvil" : "ui";
+                          (id == PROC_ANVIL)   ? "anvil" :
+                          (id == PROC_BOUNCER) ? "rf" : "ui";
         for (int i = 0; i < n; ++i) {
             const char c = chunk[i];
             if (c == '\n') {
@@ -310,10 +398,17 @@ void tick_services() {
             // Chain-after (START pressed with no contract): spawn the
             // gateway now. Plain LOAD: restart it when it was running.
             if (g_chain_after_deploy) {
+                // VOID-142 stage-2: chain the bouncer behind the gateway
+                // (serial field from Panel 4; empty = test mode). The
+                // bounded note carries both outcomes.
                 const int rc = proc_gateway_start();
+                const int rb = (rc == 0) ? proc_bouncer_start(g_serial_port)
+                                         : -1;
                 std::snprintf(note, sizeof(note), "DEPLOY OK %s (%s)",
                               g_deploy_addr,
-                              (rc == 0) ? "gateway start" : "gateway FAILED");
+                              (rc != 0) ? "gateway FAILED" :
+                              (rb == 0) ? "gateway+bouncer start"
+                                        : "gateway start, bouncer FAILED");
             } else if (proc_running(PROC_GATEWAY) != 0) {
                 const int rc = proc_gateway_restart();
                 std::snprintf(note, sizeof(note), "DEPLOY OK %s (%s)",
@@ -439,12 +534,19 @@ void render_panel1() {
     }
 
     ImGui::Separator();
-    ImGui::TextDisabled("LOG (sample)");
+    ImGui::TextDisabled("LOG (live)");
     const float gate_h = ImGui::GetTextLineHeightWithSpacing() + 3.0f;
-    log_box("RfLog", kLogRf, ImGui::GetContentRegionAvail().y - gate_h);
+    // VOID-142 stage-2: Panel-2 pattern — bouncer ring snapshot into
+    // g_rf_text (tag "rf"), then the frozen log_box geometry.
+    log_ring_render(&g_ring_rf, g_rf_text, sizeof(g_rf_text), "");
+    log_box("RfLog", g_rf_text, ImGui::GetContentRegionAvail().y - gate_h);
     ImGui::SetCursorPosY(ImGui::GetCursorPosY() + 3.0f);
+    // VOID-142 stage-2: live gate — passes, tamper rejects, restart
+    // safety (receipts.json persisted ⇒ a settlement survived a
+    // gateway restart, VOID-130).
     ImGui::Text("Passes %d/10 · Tamper rejects %d · Restart-safe %s",
-                0, 0, "--");
+                g_passes, g_tamper_rejects,
+                (g_receipts.settlements > 0) ? "yes" : "--");
     ImGui::EndChild();
 }
 
@@ -521,9 +623,15 @@ void render_panel4() {
 
     const float avail = ImGui::GetContentRegionAvail().x;
     const float half_w = (avail - SC(8.0f)) * 0.5f;
+    // VOID-142 stage-2: bouncer serial port (buyer Heltec USB). Empty
+    // = test mode (no radio, 'tst_ack' path). Read before START — the
+    // bouncer spawn takes it as its one argument.
+    ImGui::TextDisabled("SERIAL PORT (empty = test mode):");
+    ImGui::SetNextItemWidth(-1.0f);
+    ImGui::InputText("##serial_port", g_serial_port, sizeof(g_serial_port));
     // START auto-chain: with no contract loaded it deploys first
-    // (async → "DEPLOYING…"; tick_services chains the gateway on
-    // the deploy result). One click = Panels 2 AND 3 come up.
+    // (async → "DEPLOYING…"; tick_services chains the gateway +
+    // bouncer on the deploy result). One click = Panels 1, 2 AND 3.
     if (ImGui::Button("START", ImVec2(half_w, SC(40.0f)))) {
         if (proc_anvil_start() != 0) {
             std::snprintf(g_last_action, sizeof(g_last_action),
@@ -538,8 +646,17 @@ void render_panel4() {
             }
         } else {
             const int rc = proc_gateway_start();
-            std::snprintf(g_last_action, sizeof(g_last_action),
-                          (rc == 0) ? "START (anvil+gateway)" : "START FAILED");
+            if (rc != 0) {
+                std::snprintf(g_last_action, sizeof(g_last_action),
+                              "START FAILED");
+            } else {
+                // VOID-142 stage-2: bouncer rides along on the direct
+                // path (serial field above; empty = test mode).
+                const int rb = proc_bouncer_start(g_serial_port);
+                std::snprintf(g_last_action, sizeof(g_last_action),
+                              (rb == 0) ? "START (anvil+gateway+bouncer)"
+                                        : "START (bouncer FAILED)");
+            }
         }
     }
     ImGui::SameLine();
@@ -551,7 +668,12 @@ void render_panel4() {
     // Row 3: SEND ACK | SHOW PANEL | HELP | SNAP↔RESTORE (four cols).
     const float q_w = (avail - SC(24.0f)) * 0.25f;
     if (ImGui::Button("SEND ACK", ImVec2(q_w, SC(40.0f)))) {
-        std::snprintf(g_last_action, sizeof(g_last_action), "SEND ACK");
+        // VOID-142 stage-2: authorise the buyer payment through the
+        // bouncer's CLI stdin ("ack" → ACK_BUY over serial). -1 (no
+        // stdin pipe / dead child) reads as "no bouncer".
+        std::snprintf(g_last_action, sizeof(g_last_action),
+                      (proc_stdin_write(PROC_BOUNCER, "ack\n") == 0)
+                          ? "SEND ACK (ok)" : "SEND ACK (no bouncer)");
     }
     ImGui::SameLine();
     const char* panel_label = g_drawer_open ? "HIDE PANEL" : "SHOW PANEL";
@@ -720,7 +842,8 @@ void render_error_strip() {
     ImGui::TextUnformatted("ERRORS");
     ImGui::SameLine();
     const struct { const char* label; const char* tag; } filters[] = {
-        {"ALL", ""}, {"GATEWAY", "gw"}, {"ANVIL", "anvil"}, {"UI", "ui"}
+        {"ALL", ""}, {"GATEWAY", "gw"}, {"ANVIL", "anvil"},
+        {"RF", "rf"}, {"UI", "ui"} // VOID-142 stage-2: bouncer source
     };
     for (const auto& f : filters) {
         const bool active = (std::strcmp(g_err_filter, f.tag) == 0);
@@ -806,23 +929,7 @@ void tick_run_clock() {
 
 } // namespace
 
-// Non-static on purpose: this is the wiring stage's live-data hook. The
-// address is taken once in main() so -Wunused-function stays silent until
-// the first real caller lands.
-void setLegState(const char* name, const LegState state) {
-    for (size_t i = 0; i < kLegCount; ++i) {
-        if (std::strcmp(kLegs[i].name, name) == 0) {
-            kLegs[i].state = state;
-            return;
-        }
-    }
-}
-
 int main(int, char**) {
-    // Keep the future wiring hook referenced (see setLegState comment above).
-    void (*const leg_state_hook)(const char*, LegState) = &setLegState;
-    static_cast<void>(leg_state_hook);
-
     glfwSetErrorCallback(glfw_error_callback);
     if (glfwInit() == 0) {
         return 1;
