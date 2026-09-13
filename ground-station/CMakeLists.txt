@@ -220,6 +220,7 @@ if(VOID_BUILD_UI)
     # Add UI executable
     add_executable(ground_station_ui
         ui/main.cpp
+        ui/proc_manager.cpp
     )
 
     target_include_directories(ground_station_ui PRIVATE

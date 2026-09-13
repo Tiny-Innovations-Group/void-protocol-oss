@@ -18,6 +18,8 @@
 #include "imgui_impl_glfw.h"
 #include "imgui_impl_opengl3.h"
 
+#include "proc_manager.h"
+
 #if defined(__APPLE__)
 #define GL_SILENCE_DEPRECATION
 #endif
@@ -166,6 +168,10 @@ char g_last_action[64]     = "--";
 char g_contract_value[32]  = "500";
 char g_run_buf[16]         = "RUN 00:00:00";
 
+// Set in main() right after the window exists — EXIT's real close path
+// needs the handle (VOID-142 stage-1 wiring).
+GLFWwindow* g_window = nullptr;
+
 void glfw_error_callback(int error, const char* description) {
     std::fprintf(stderr, "GLFW Error %d: %s\n", error, description);
 }
@@ -269,11 +275,13 @@ void render_panel3() {
     begin_panel("PanelL2Chain", kMargin, kMargin + kPanelH + kSpacing);
     panel_title("3. L2 Blockchain (Anvil)", true);
     ImGui::Separator();
-    ImGui::TextUnformatted(
-        "Status:      UNCONNECTED\n"
-        "Block:       --\n"
-        "Contract:    --\n"
-        "Settlements: --");
+    // VOID-142 stage-1: Contract field is live (proc_escrow); the rest
+    // comes online in the 1c poll pass.
+    ImGui::TextUnformatted("Status:      UNCONNECTED");
+    ImGui::TextUnformatted("Block:       --");
+    ImGui::Text("Contract:    %s",
+               (proc_escrow()[0] != '\0') ? proc_escrow() : "--");
+    ImGui::TextUnformatted("Settlements: --");
     ImGui::TextDisabled("BLOCKCHAIN LOG (sample — newest at bottom)");
     log_box("L2Log", kLogChain, ImGui::GetContentRegionAvail().y);
     ImGui::EndChild();
@@ -300,18 +308,34 @@ void render_panel4() {
     ImGui::TextDisabled("amount used by LOAD NEXT CONTRACT");
 
     const float avail = ImGui::GetContentRegionAvail().x;
+    // VOID-142 stage-1: LOAD ensures anvil, deploys Escrow via forge,
+    // and re-points the gateway. Result address echoes into the action
+    // line (value kept per spec §6.4).
     if (ImGui::Button("LOAD NEXT CONTRACT", ImVec2(-1.0f, 40.0f))) {
-        std::snprintf(g_last_action, sizeof(g_last_action),
-                      "LOAD NEXT CONTRACT (value=%s)",
-                      (g_contract_value[0] != '\0') ? g_contract_value : "0");
+        const int rc = proc_deploy_contract();
+        const char* value = (g_contract_value[0] != '\0') ? g_contract_value : "0";
+        if (rc == 0) {
+            std::snprintf(g_last_action, sizeof(g_last_action),
+                          "LOAD CONTRACT (value=%s) %s", value, proc_escrow());
+        } else {
+            std::snprintf(g_last_action, sizeof(g_last_action),
+                          "LOAD CONTRACT (value=%s) FAILED", value);
+        }
     }
-    const float half_w = (avail - 8.0f) * 0.5f;
-    if (ImGui::Button("START", ImVec2(half_w, 40.0f))) {
-        std::snprintf(g_last_action, sizeof(g_last_action), "START");
+    // START: anvil first, then gateway (uses the loaded contract).
+    if (ImGui::Button("START", ImVec2(avail * 0.5f - 4.0f, 40.0f))) {
+        int rc = proc_anvil_start();
+        if (rc == 0) {
+            rc = proc_gateway_start();
+        }
+        std::snprintf(g_last_action, sizeof(g_last_action), "START (%s)",
+                      (rc == 0) ? "anvil+gateway" : "FAILED");
     }
     ImGui::SameLine();
-    if (ImGui::Button("STOP", ImVec2(half_w, 40.0f))) {
-        std::snprintf(g_last_action, sizeof(g_last_action), "STOP");
+    if (ImGui::Button("STOP", ImVec2(avail * 0.5f - 4.0f, 40.0f))) {
+        const int rc = proc_stop_all();
+        std::snprintf(g_last_action, sizeof(g_last_action), "STOP (%s)",
+                      (rc == 0) ? "clean" : "forced");
     }
     const float third_w = (avail - 16.0f) / 3.0f;
     if (ImGui::Button("SEND ACK", ImVec2(third_w, 40.0f))) {
@@ -334,7 +358,12 @@ void render_panel4() {
     ImGui::PushStyleColor(ImGuiCol_ButtonHovered, kDangerHover);
     ImGui::PushStyleColor(ImGuiCol_ButtonActive, kDangerActive);
     if (ImGui::Button("EXIT", ImVec2(-1.0f, 40.0f))) {
+        // Graceful first: reap the stack, then close the window.
+        proc_stop_all();
         std::snprintf(g_last_action, sizeof(g_last_action), "EXIT");
+        if (g_window != nullptr) {
+            glfwSetWindowShouldClose(g_window, 1);
+        }
     }
     ImGui::PopStyleColor(3);
 
@@ -472,6 +501,8 @@ int main(int, char**) {
         glfwTerminate();
         return 1;
     }
+    g_window = window; // EXIT's close path
+    proc_init();       // SIGPIPE guard + repo-root anchor
     glfwMakeContextCurrent(window);
     glfwSwapInterval(1); // vsync
 
