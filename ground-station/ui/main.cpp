@@ -14,6 +14,7 @@
 
 #include <cstdio>
 #include <cstring>
+#include <ctime>
 #include <atomic>
 #include <thread>
 
@@ -23,6 +24,7 @@
 
 #include "proc_manager.h"
 #include "log_store.h"
+#include "pass_store.h"
 #include "service_poller.h"
 #include "receipts_tailer.h"
 
@@ -129,6 +131,8 @@ const char* kHelpPanels =
     "1. RF Comms (Ground ↔ Sat) — everything sent over the radio:\n"
     "    ground-station radio ↔ satellite Heltecs. Invoice (A), Payment (B),\n"
     "    ACK, Receipt (C), Delivery (D), Heartbeat (HB) all appear here.\n"
+    "    PASS HISTORY (right column) keeps every completed pass — streak\n"
+    "    #, time, A→D duration; red RESET rows mark tamper rejects.\n"
     "2. Go Server (Gateway) — gateway health, verify counters, HTTP request log.\n"
     "3. L2 Blockchain (Anvil) — mined blocks, settleBatch txs, SettlementCreated\n"
     "    events; newest at bottom.\n"
@@ -143,7 +147,9 @@ const char* kHelpStates =
 const char* kHelpGate =
     "Passes 10/10 · Tamper rejects visible · Restart-safe:\n"
     "a full demo pass is one clean A → B → ACK → SETTLE → C → D run.\n"
-    "10 consecutive passes = flat-sat alpha done.";
+    "10 consecutive passes = flat-sat alpha done.\n"
+    "The dot strip fills as the streak grows; a tamper reject empties\n"
+    "it and leaves a red RESET row in the history.";
 
 // Set in main() right after the window exists — EXIT's real close path
 // needs the handle (VOID-142 stage-1 wiring).
@@ -153,6 +159,7 @@ GLFWwindow* g_window = nullptr;
 bool g_drawer_open       = false;
 bool g_help_open         = false;
 bool g_help_just_opened  = false;
+bool g_font_loaded       = false; // TTF font found (streak dots need it)
 char g_last_action[64]     = "--";
 char g_run_buf[16]         = "RUN 00:00:00";
 
@@ -214,6 +221,29 @@ int  g_passes         = 0; // clean A→B→ACK→SETTLE→C→D runs (10 = gate
 int  g_tamper_rejects = 0; // [BOUNCER] ❌ drops (each resets the run)
 char g_serial_port[64] = "/dev/cu.usbserial-0001"; // Panel-4 bouncer arg
 
+// --- Panel-1 PASS HISTORY (console polish, session-only) ---
+// Ring of per-pass records + reset markers, rendered in the column
+// opposite the leg list. Passes keep their record after the legs
+// reset — the delivery track the gate counter never showed.
+pass_ring_t g_pass_ring = {}; // zero-init == pass_ring_reset state
+bool        g_pass_armed = false; // A seen, waiting for the pass to close
+double      g_pass_t0    = 0.0;   // ImGui clock at arm time (duration)
+
+// "HH:MM:SS" wall clock now (local, reentrant, bounded). Rendered
+// rows carry real-world times for the TRL 4 screen recording; the
+// RUN clock stays ImGui-monotonic (session uptime).
+void wall_clock_now(char* buf, const std::size_t cap) {
+    if (buf == nullptr || cap == 0) return;
+    const std::time_t now = std::time(nullptr);
+    struct tm tm_buf;
+    if (localtime_r(&now, &tm_buf) == nullptr) {
+        buf[0] = '\0';
+        return;
+    }
+    std::snprintf(buf, cap, "%02d:%02d:%02d",
+                  tm_buf.tm_hour, tm_buf.tm_min, tm_buf.tm_sec);
+}
+
 // Errors filter tab. "" = ALL, else a ring tag ("gw" / "anvil" / "rf" / "ui").
 const char* g_err_filter = "";
 
@@ -268,6 +298,12 @@ void rf_update_legs(const char* line) {
     if (line == nullptr) return;
     if (std::strstr(line, "Packet A (Invoice)") != nullptr) {
         set_leg_state(kLegA, LegState::Active);
+        // Arm the pass timer once per run — a mid-run repeat A keeps
+        // the original start (duration stays A→first-close).
+        if (!g_pass_armed) {
+            g_pass_armed = true;
+            g_pass_t0    = ImGui::GetTime();
+        }
     }
     if (std::strstr(line, "Received PACKET B") != nullptr) {
         set_leg_state(kLegA, LegState::Ok);
@@ -280,6 +316,11 @@ void rf_update_legs(const char* line) {
         set_leg_state(kLegB, LegState::Fail);
         ++g_tamper_rejects;
         g_passes = 0; // FAIL resets the pass counter (kHelpStates)
+        // RESET marker row — the zeroed counter now leaves a trace.
+        char tbuf[12];
+        wall_clock_now(tbuf, sizeof(tbuf));
+        pass_ring_push(&g_pass_ring, true, 0, tbuf, 0.0f);
+        g_pass_armed = false;
     }
     if (std::strstr(line, "[ACK] ✅") != nullptr) {
         set_leg_state(kLegAck, LegState::Ok);
@@ -298,6 +339,15 @@ void rf_update_legs(const char* line) {
             kLegs[kLegSettle].state == LegState::Ok &&
             kLegs[kLegC].state == LegState::Ok) {
             ++g_passes; // one clean A→B→ACK→SETTLE→C→D run
+            // Pass record — the legs reset below, the history keeps
+            // the track: streak #, completion time, A→D duration.
+            char tbuf[12];
+            wall_clock_now(tbuf, sizeof(tbuf));
+            const float dur = (g_pass_armed)
+                ? static_cast<float>(ImGui::GetTime() - g_pass_t0)
+                : -1.0f; // un-armed close (stale FSM) → no duration
+            pass_ring_push(&g_pass_ring, false, g_passes, tbuf, dur);
+            g_pass_armed = false;
             set_leg_state(kLegA, LegState::Idle);
             set_leg_state(kLegB, LegState::Idle);
             set_leg_state(kLegAck, LegState::Idle);
@@ -545,6 +595,15 @@ void render_panel1() {
     panel_title("1. RF Comms (Ground ↔ Sat)", true);
     ImGui::Separator();
 
+    // Two-column top zone: legs (left, group) + PASS HISTORY (right,
+    // bordered child). The history keeps the per-pass track after the
+    // legs reset on delivery; streak dots show live gate progress.
+    // The child is exactly as tall as the leg block, so the LOG box
+    // and gate strip below keep their frozen geometry.
+    const float line_h = ImGui::GetTextLineHeightWithSpacing();
+    const float cols_h = static_cast<float>(kLegCount) * line_h;
+
+    ImGui::BeginGroup();
     const float char_w = ImGui::CalcTextSize(" ").x;
     const float state_x = 15.0f + (19.0f * char_w); // 19ch name column
     for (size_t i = 0; i < kLegCount; ++i) {
@@ -558,6 +617,69 @@ void render_panel1() {
             (kLegs[i].state == LegState::Ok)     ? "OK" :
             (kLegs[i].state == LegState::Fail)   ? "FAIL" : "IDLE");
     }
+    ImGui::EndGroup();
+
+    // Right column starts beside the leg group (SameLine after
+    // EndGroup aligns to the group's top line); width = all remaining
+    // panel content to the right of the cursor.
+    ImGui::SameLine();
+    const float pass_w = ImGui::GetWindowContentRegionMax().x -
+                         ImGui::GetCursorPosX();
+    ImGui::PushStyleColor(ImGuiCol_ChildBg, kLogBg);
+    ImGui::PushStyleColor(ImGuiCol_Border, kLogBorder);
+    ImGui::BeginChild("PassCol", ImVec2(pass_w, cols_h), true);
+
+    // Streak dots (10 slots = the gate). U+25CF/U+25CB need a real
+    // TTF font — fall back to ASCII when only the default font loaded.
+    const char* const dot_on  = g_font_loaded ? "●" : "#";
+    const char* const dot_off = g_font_loaded ? "○" : "-";
+    ImGui::TextDisabled("PASS HISTORY (newest at bottom)");
+    for (int i = 0; i < 10; ++i) {
+        if (i > 0) {
+            ImGui::SameLine(0.0f, 2.0f);
+        }
+        ImGui::TextColored((i < g_passes) ? kStateOk : kTextDim, "%s",
+                           (i < g_passes) ? dot_on : dot_off);
+    }
+    ImGui::SameLine(0.0f, 8.0f);
+    ImGui::TextDisabled("%d/10", g_passes);
+
+    // Scrollable rows: green = completed pass (#, time, A→D duration),
+    // red = tamper-reject RESET marker. Bounded by the 16-record ring.
+    ImGui::BeginChild("PassList",
+                      ImVec2(0.0f, ImGui::GetContentRegionAvail().y), false);
+    for (std::size_t back = g_pass_ring.count; back > 0; --back) {
+        const pass_rec_t* const rec = pass_ring_peek(&g_pass_ring, back - 1);
+        if (rec == nullptr) continue;
+        char row[48];
+        if (rec->is_reset) {
+            draw_marker(kDangerActive);
+            std::snprintf(row, sizeof(row), "RESET — tamper %s", rec->t);
+            ImGui::TextColored(kDangerActive, "%s", row);
+        } else {
+            draw_marker(kStateOk);
+            char dur_buf[10];
+            if (rec->dur_s >= 0.0f) {
+                std::snprintf(dur_buf, sizeof(dur_buf), "%.1fs", rec->dur_s);
+            } else {
+                std::snprintf(dur_buf, sizeof(dur_buf), "--");
+            }
+            std::snprintf(row, sizeof(row), "#%-2d %s  %s",
+                          rec->n, rec->t, dur_buf);
+            ImGui::TextUnformatted(row);
+        }
+    }
+    if (g_pass_ring.count == 0) {
+        ImGui::TextDisabled("-- no passes yet --");
+    }
+    if (g_pass_ring.fresh) { // keep the newest row in view
+        ImGui::SetScrollY(ImGui::GetScrollMaxY());
+        g_pass_ring.fresh = false;
+    }
+    ImGui::EndChild();
+
+    ImGui::EndChild();
+    ImGui::PopStyleColor(2);
 
     ImGui::Separator();
     ImGui::TextDisabled("LOG (live)");
@@ -1017,10 +1139,10 @@ int main(int, char**) {
     ImGuiIO& io = ImGui::GetIO();
     io.IniFilename = nullptr; // deterministic fixed layout
 
-    // 14px monospace with the glyphs our text uses (—, ·, ↔, →).
+    // 14px monospace with the glyphs our text uses (—, ·, ↔, →, ●, ○).
     // Do not hard-depend on a TTF being present: fall back to ImGui's default.
     static const ImWchar kGlyphRanges[] = {
-        0x0020, 0x00FF, 0x2013, 0x2014, 0x2190, 0x21FF, 0,
+        0x0020, 0x00FF, 0x2013, 0x2014, 0x2190, 0x21FF, 0x25A0, 0x25FF, 0,
     };
     static const char* const kFontCandidates[] = {
         "/System/Library/Fonts/Menlo.ttc",
@@ -1043,6 +1165,7 @@ int main(int, char**) {
     if (!font_loaded) {
         io.Fonts->AddFontDefault();
     }
+    g_font_loaded = font_loaded; // streak-dot glyph availability
 
     ImGui::StyleColorsDark();
     ImGuiStyle& style = ImGui::GetStyle();

@@ -216,4 +216,14 @@ Settlements: --
 4. Existing suites untouched and green: ground-station ctest 41/41, gateway `go test ./...`.
 5. Runtime smoke without any gateway/bouncer running (everything shows UNCONNECTED/IDLE/--).
 
-*Drafted 2026-09-12 · decision graph 231–275 · design frozen. Port landed and verified 2026-09-13 (graph 278+): clean -Werror build, 41/41 ctest, runtime smoke, glyph parity.*
+## 10. Post-freeze addendum (2026-09-14) — Panel-1 PASS HISTORY column
+
+Console polish logged as journey Change Log v19 (non-ticket; §5.1 above stays the frozen 2026-09-12 record). Delta to §5.1:
+
+- The zone between the title separator and the LOG separator is now **two columns**: the 7-leg list (left, unchanged) and a bordered **PASS HISTORY** child (right, bg/border per §6.1 log-window styling), exactly as tall as the leg block — LOG window and gate strip geometry unchanged.
+- PASS HISTORY header: dim label `PASS HISTORY (newest at bottom)`, then a **streak-dot strip** `●●●●○○○○○○ N/10` (10 slots = the gate; filled `#43c666`, empty `#808080`; ASCII `#`/`-` fallback when no TTF font loaded — glyphs U+25CF/U+25CB added to `kGlyphRanges` as U+25A0–U+25FF).
+- Rows (scrollable, newest at bottom, autoscroll on new record, 16-record session-only ring in `ui/pass_store.h`): green-marker `#n  HH:MM:SS  D.Ds` per completed pass (streak-relative #, wall-clock close time, A→D duration via `localtime_r` + `ImGui::GetTime`); red-marker `RESET — tamper HH:MM:SS` on each `[BOUNCER] ❌` (the row that zeroed the streak).
+- Semantics: session-only by decision — `receipts.json` remains the persisted evidence; the ring never touches disk.
+- `ui/mockup.html` mirrors the two-column zone with a sample history (pass, reset, then a 3-pass streak).
+
+*Drafted 2026-09-12 · decision graph 231–275 · design frozen. Port landed and verified 2026-09-13 (graph 278+): clean -Werror build, 41/41 ctest, runtime smoke, glyph parity. §10 addendum 2026-09-14 (Change Log v19).*
