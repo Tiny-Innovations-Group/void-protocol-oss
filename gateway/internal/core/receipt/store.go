@@ -156,6 +156,24 @@ func (s *Store) Count() int {
 	return len(s.records)
 }
 
+// CountByStatus returns the number of records currently in PENDING and
+// DISPATCHED state (VOID-142 status endpoint). Latest line per dedup
+// key wins — the same semantics as loadRecords — so an append-only
+// file with status-flip lines reports true current state, not raw
+// line counts.
+func (s *Store) CountByStatus() (pending, dispatched int) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for _, rec := range s.records {
+		if rec.DispatchStatus == StatusDispatched {
+			dispatched++
+		} else {
+			pending++
+		}
+	}
+	return pending, dispatched
+}
+
 // Append writes one Record as a new JSONL line. Returns ErrDuplicate
 // if the dedup key has already been recorded. A blank DispatchStatus
 // on the caller's struct is filled in as StatusPending before the

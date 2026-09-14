@@ -95,18 +95,21 @@ static double linearInterp(double a, double b, double t) {
     return a + (b - a) * t;
 }
 
+// Interpolates the geodetic coordinate between two waypoints. The caller
+// retains lat/lon/alt (VOID-022 heartbeat telemetry) and converts to
+// ECEF separately for the PacketA/B pos_vec consumers.
 static void interpolateWaypoint(const GeoWaypoint& a, const GeoWaypoint& b,
-                                uint32_t t_sec, double out[3]) {
+                                uint32_t t_sec,
+                                double* lat_deg, double* lon_deg,
+                                double* alt_m) {
     const double span = static_cast<double>(b.t_sec - a.t_sec);
     const double frac = (span > 0.0)
                         ? static_cast<double>(t_sec - a.t_sec) / span
                         : 0.0;
 
-    const double lat = linearInterp(a.lat_deg, b.lat_deg, frac);
-    const double lon = linearInterp(a.lon_deg, b.lon_deg, frac);
-    const double alt = linearInterp(a.alt_m,   b.alt_m,   frac);
-
-    geodeticToEcef(lat, lon, alt, out);
+    *lat_deg = linearInterp(a.lat_deg, b.lat_deg, frac);
+    *lon_deg = linearInterp(a.lon_deg, b.lon_deg, frac);
+    *alt_m   = linearInterp(a.alt_m,   b.alt_m,   frac);
 }
 
 // ── GpsStubClass implementation ─────────────────────────────────────
@@ -118,10 +121,10 @@ void GpsStubClass::begin() {
     _epoch_ms    = kEpochBaseMs;
 
     // Initialise position to launch site.
-    geodeticToEcef(kTrajectory[0].lat_deg,
-                   kTrajectory[0].lon_deg,
-                   kTrajectory[0].alt_m,
-                   _pos_ecef);
+    _lat_deg = kTrajectory[0].lat_deg;
+    _lon_deg = kTrajectory[0].lon_deg;
+    _alt_m   = kTrajectory[0].alt_m;
+    geodeticToEcef(_lat_deg, _lon_deg, _alt_m, _pos_ecef);
 }
 
 void GpsStubClass::update() {
@@ -136,27 +139,28 @@ void GpsStubClass::update() {
 
     if (elapsed_sec >= last_t) {
         // Past end of trajectory — hold at landing position.
-        geodeticToEcef(kTrajectory[kTrajectoryLen - 1].lat_deg,
-                       kTrajectory[kTrajectoryLen - 1].lon_deg,
-                       kTrajectory[kTrajectoryLen - 1].alt_m,
-                       _pos_ecef);
-        return;
-    }
+        _lat_deg = kTrajectory[kTrajectoryLen - 1].lat_deg;
+        _lon_deg = kTrajectory[kTrajectoryLen - 1].lon_deg;
+        _alt_m   = kTrajectory[kTrajectoryLen - 1].alt_m;
+    } else {
+        // Fallback to launch site (unreachable while the table is
+        // well-formed — guarded by the static_asserts above).
+        _lat_deg = kTrajectory[0].lat_deg;
+        _lon_deg = kTrajectory[0].lon_deg;
+        _alt_m   = kTrajectory[0].alt_m;
 
-    for (size_t i = 0; i + 1 < kTrajectoryLen; ++i) {
-        if (elapsed_sec >= kTrajectory[i].t_sec &&
-            elapsed_sec <  kTrajectory[i + 1].t_sec) {
-            interpolateWaypoint(kTrajectory[i], kTrajectory[i + 1],
-                                elapsed_sec, _pos_ecef);
-            return;
+        for (size_t i = 0; i + 1 < kTrajectoryLen; ++i) {
+            if (elapsed_sec >= kTrajectory[i].t_sec &&
+                elapsed_sec <  kTrajectory[i + 1].t_sec) {
+                interpolateWaypoint(kTrajectory[i], kTrajectory[i + 1],
+                                    elapsed_sec,
+                                    &_lat_deg, &_lon_deg, &_alt_m);
+                break;
+            }
         }
     }
 
-    // Should not reach here, but fallback to launch site.
-    geodeticToEcef(kTrajectory[0].lat_deg,
-                   kTrajectory[0].lon_deg,
-                   kTrajectory[0].alt_m,
-                   _pos_ecef);
+    geodeticToEcef(_lat_deg, _lon_deg, _alt_m, _pos_ecef);
 }
 
 void GpsStubClass::getPositionVec(double out[3]) const {
@@ -169,6 +173,34 @@ uint64_t GpsStubClass::getEpochMs() const {
 
 uint32_t GpsStubClass::missionElapsedSec() const {
     return (millis() - _boot_millis) / 1000U;
+}
+
+// ── VOID-022 heartbeat telemetry accessors ──────────────────────────
+
+int32_t GpsStubClass::getLatFixed1e7() const {
+    return static_cast<int32_t>(_lat_deg * 10000000.0);
+}
+
+int32_t GpsStubClass::getLonFixed1e7() const {
+    return static_cast<int32_t>(_lon_deg * 10000000.0);
+}
+
+uint32_t GpsStubClass::getPressurePa() const {
+    // Two-layer ISA model: troposphere (h ≤ 11 km), then isothermal
+    // lower stratosphere. Synthetic telemetry only — the accuracy bar
+    // is "plausible on a dashboard", not flight instrumentation. A real
+    // barometer arrives with the Phase B sensor work.
+    double h = _alt_m;
+    if (h < 0.0) h = 0.0;
+
+    double p;
+    if (h <= 11000.0) {
+        p = 101325.0 * pow(1.0 - 2.25577e-5 * h, 5.25588);
+    } else {
+        p = 22632.06 * exp(-(h - 11000.0) / 6341.62);
+    }
+    if (p < 0.0) p = 0.0;
+    return static_cast<uint32_t>(p);
 }
 
 #endif // VOID_GPS_STUB

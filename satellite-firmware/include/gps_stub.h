@@ -54,10 +54,25 @@ public:
     // Always returns true (stub always has a "fix").
     bool hasFix() const { return true; }
 
+    // ── VOID-022 heartbeat telemetry accessors ──────────────────────
+    // Geodetic fixed-point per HeartbeatPacket_t (degrees * 1e7).
+    int32_t  getLatFixed1e7() const;
+    int32_t  getLonFixed1e7() const;
+    // Barometric pressure synthesised from the trajectory altitude via
+    // a two-layer ISA model (no barometer on the flat-sat).
+    uint32_t getPressurePa() const;
+    // Synthetic constants — the stub has no velocity/lock model. Values
+    // match the VOID-123 golden vector so bench frames look canonical.
+    uint16_t getSpeedCms() const { return 600u; }
+    uint8_t  getSatLock()  const { return 8u; }
+
 private:
     uint32_t _boot_millis;
     double   _pos_ecef[3];
     uint64_t _epoch_ms;
+    double   _lat_deg;
+    double   _lon_deg;
+    double   _alt_m;
 };
 
 extern GpsStubClass GpsStub;
