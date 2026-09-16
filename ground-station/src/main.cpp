@@ -22,6 +22,7 @@
 #include "gateway_client.h"
 #include "egress_poll_client.h"
 #include "egress_orchestrator.h"
+#include "egress_hex.h"            // VOID-022: bounded hex decode for heartbeat lines
 #include "ack_builder.h"
 
 // --- Global State ---
@@ -322,6 +323,42 @@ int main(int argc, char* argv[]) {
                             std::puts("\n[HARDWARE] 📄 Received Packet A (Invoice). Awaiting 'ack' command.");
                         }
                         // ----------------------
+                        // VOID-022: heartbeat evidence lines from the buyer
+                        // board. HEARTBEAT_TX: = the buyer's own frame;
+                        // HEARTBEAT_RX: = a seller frame heard by the buyer's
+                        // RX path (the seller console is not wired to the
+                        // bouncer, so this is how Sat A telemetry reaches the
+                        // ground log). Both carry one 48-byte SNLP heartbeat
+                        // as 96 hex chars — decode with the bounded VOID-138
+                        // decoder and forward the raw frame to the gateway,
+                        // which CRC-gates it and appends heartbeats.json.
+                        else if (std::strncmp(line_buf, "HEARTBEAT_TX:", 13) == 0 ||
+                                 std::strncmp(line_buf, "HEARTBEAT_RX:", 13) == 0) {
+                            constexpr size_t kHbPrefix = 13;
+                            uint8_t hb_bin[SIZE_HEARTBEAT_PCK];
+                            const size_t hex_len = std::strlen(&line_buf[kHbPrefix]);
+                            if (hex_len == sizeof(hb_bin) * 2 &&
+                                egress::hex_decode(&line_buf[kHbPrefix], hex_len,
+                                                   hb_bin, sizeof(hb_bin))) {
+                                if (go_gateway.push_to_l2(hb_bin, sizeof(hb_bin))) {
+                                    std::puts("[TELEMETRY] 💓 Heartbeat forwarded to Gateway.");
+                                } else {
+                                    std::puts("[TELEMETRY] ⚠️  Heartbeat forward failed (non-fatal).");
+                                }
+                            } else {
+                                std::puts("[TELEMETRY] ⚠️  Malformed heartbeat line dropped.");
+                            }
+                        }
+                        // VOID-022: echo every unmatched line from the buyer
+                        // board. The buyer's USB serial is owned by this
+                        // process, so without an echo its diagnostics
+                        // (PACKET_D_RX:, WARN:, HB deferrals, …) are
+                        // invisible to the operator — which made the
+                        // 2026-06-12 heartbeat wedge needlessly hard to
+                        // triage. Bounded: line_buf is NUL-terminated above.
+                        else {
+                            std::printf("[SAT-B] %s\n", line_buf);
+                        }
                         line_idx = 0; // Reset buffer
                     }
                 } else if (line_idx < sizeof(line_buf) - 1) {

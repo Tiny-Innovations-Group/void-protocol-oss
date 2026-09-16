@@ -12,6 +12,7 @@
 #include "seller.h"
 #include "void_config.h"          // VOID-128: SELLER_APID / BUYER_APID / BUYER_SAT_ID
 #include "packet_d_builder.h"     // VOID-136: pure PacketD emit
+#include "heartbeat_tx.h"         // VOID-022: 30 s heartbeat telemetry
 
 #include <cstddef>
 #include <cstdint>
@@ -243,6 +244,36 @@ void runSellerLoop() {
     }
 
     // ---------------------------------------------------------
+    // 1c. VOID-022 hardening: lost-wakeup recovery. If RxDone is
+    //     latched in the radio IRQ register but the DIO1 edge was
+    //     missed, rx_flag never fires and the frame rots in the FIFO.
+    //     Synthesise the flag; polled at most every 250 ms to keep
+    //     SPI pressure negligible.
+    // ---------------------------------------------------------
+    {
+        static unsigned long last_irq_poll = 0;
+        if (!rx_flag && millis() - last_irq_poll >= 250) {
+            last_irq_poll = millis();
+            if (Void.isRealReception()) rx_flag = true;
+        }
+    }
+
+    // ---------------------------------------------------------
+    // 1d. VOID-022: 30 s heartbeat telemetry (droppable, CAD-gated,
+    //     1 s backoff while busy). Only when no RX is pending — TX
+    //     shares the SX126x FIFO base with RX, so transmitting before
+    //     draining a received frame would clobber it.
+    // ---------------------------------------------------------
+    if (!rx_flag) {
+        heartbeat_tx::service(
+            SELLER_APID,
+            (txState == SellerState::ADVERTISING)
+                ? heartbeat_tx::kSysStateRxActive
+                : heartbeat_tx::kSysStateConnected,
+            &rx_flag);
+    }
+
+    // ---------------------------------------------------------
     // 2. LISTEN FOR DOWNLINK (Phase 6) — ISR-gated, sized read
     // ---------------------------------------------------------
     if (!rx_flag) return;
@@ -327,6 +358,22 @@ void runSellerLoop() {
                     Void.radio.startReceive();
                 } else {
                     Serial.println("WARN: Tunnel command not recognized.");
+                }
+            }
+            // VOID-022: peer heartbeat (Packet L, len-unique on the alpha
+            // wire). CRC-verify, then surface as a HEARTBEAT_RX evidence
+            // line for the operator console capture. CRC-fail heartbeats
+            // drop silently — telemetry only.
+            else if (len == SIZE_HEARTBEAT_PCK) {
+                const size_t hb_crc_off = SIZE_HEARTBEAT_PCK - 4u;
+                const uint32_t hb_wire =
+                      static_cast<uint32_t>(rx_buffer[hb_crc_off])
+                    | (static_cast<uint32_t>(rx_buffer[hb_crc_off + 1u]) << 8)
+                    | (static_cast<uint32_t>(rx_buffer[hb_crc_off + 2u]) << 16)
+                    | (static_cast<uint32_t>(rx_buffer[hb_crc_off + 3u]) << 24);
+                if (hb_wire == Void.calculateCRC(rx_buffer, hb_crc_off)) {
+                    Serial.print("HEARTBEAT_RX:");
+                    Void.hexDump(rx_buffer, len);
                 }
             }
         }
