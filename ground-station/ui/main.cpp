@@ -136,7 +136,12 @@ const char* kHelpPanels =
     "2. Go Server (Gateway) — gateway health, verify counters, HTTP request log.\n"
     "3. L2 Blockchain (Anvil) — mined blocks, settleBatch txs, SettlementCreated\n"
     "    events; newest at bottom.\n"
-    "4. Operator Controls — the demo lifecycle lives here: load, start, stop.";
+    "4. Operator Controls — the demo lifecycle lives here: load, start, stop.\n"
+    "Side panel (SHOW PANEL) — EDIT CONTRACT / VIEW RECEIPTS / DEBUG.\n"
+    "    DEBUG is a read-only tap of the raw serial wire: every line the\n"
+    "    board sent (←) and every line the ground wrote back (→), each\n"
+    "    stamped HH:MM:SS (the same wall clock as PASS HISTORY), verbatim\n"
+    "    hex payloads included — the unfiltered view behind Panel 1.";
 
 const char* kHelpStates =
     "[IDLE]   no activity yet\n"
@@ -214,6 +219,7 @@ log_ring_t      g_ring_chain = {};
 log_ring_t      g_ring_rf    = {}; // VOID-142 stage-2: bouncer stdout
 log_ring_t      g_ring_errors = {};
 log_ring_t      g_ring_cmds   = {}; // executed forge queries (raw)
+debug_ring_t    g_ring_debug = {}; // VOID-145: raw serial wire tap
 double          g_last_poll  = 0.0;
 
 // --- Panel-1 gate state (VOID-142 stage-2) ---
@@ -284,6 +290,9 @@ char g_chain_text[8448] = "";
 char g_rf_text[8448]    = ""; // VOID-142 stage-2: Panel-1 RF log
 char g_errors_text[8448] = "";
 char g_cmds_text[8448]  = "";
+// VOID-145: DEBUG tab snapshot — sized for all 64 debug lines at the
+// full 512-char cap plus margin (64 × 512 = 32768).
+char g_debug_text[33280] = "";
 
 // VOID-142 stage-2: Panel-1 leg FSM — one bouncer stdout line in, leg
 // states out. Triggers are the bouncer's exact printed literals
@@ -390,6 +399,30 @@ void route_child_line(const char* tag, const char* line) {
     } else if (std::strcmp(tag, "anvil") == 0) {
         log_ring_push(&g_ring_chain, tag, line);
     } else if (std::strcmp(tag, "rf") == 0) {
+        // VOID-145: raw serial wire taps ([SERIAL-RX]/[SERIAL-TX] echoes
+        // from the bouncer) go to the DEBUG tab ONLY — early return keeps
+        // them out of the Panel-1 log, the leg FSM (a raw PACKET_D_RX:
+        // line contains the PACKET_D trigger and would re-fire the D leg)
+        // and the errors mirror ([SAT-B] twins still feed it as before).
+        if (std::strncmp(line, "[SERIAL-RX] ", 12) == 0) {
+            char raw[kDebugLineCap];
+            char ts[12];
+            // VOID-145 follow-up: wall-clock stamp — the same clock the
+            // PASS HISTORY rows use, so a raw wire line correlates 1:1
+            // with the pass record that closed around it.
+            wall_clock_now(ts, sizeof(ts));
+            std::snprintf(raw, sizeof(raw), "%s ← %s", ts, line + 12);
+            debug_ring_push(&g_ring_debug, raw);
+            return;
+        }
+        if (std::strncmp(line, "[SERIAL-TX] ", 12) == 0) {
+            char raw[kDebugLineCap];
+            char ts[12];
+            wall_clock_now(ts, sizeof(ts));
+            std::snprintf(raw, sizeof(raw), "%s → %s", ts, line + 12);
+            debug_ring_push(&g_ring_debug, raw);
+            return;
+        }
         // VOID-142 stage-2: bouncer stdout → Panel-1 RF log + leg FSM.
         log_ring_push(&g_ring_rf, tag, line);
         rf_update_legs(line);
@@ -508,12 +541,21 @@ void panel_title(const char* title, bool marker) {
 }
 
 // Inset log window (spec section 6.1): dark bg, border, both-axis scroll.
-void log_box(const char* id, const char* content, float height) {
+// VOID-145: opt-in tail-follow — the imgui_demo console pattern: stay
+// pinned to the newest line while the operator is already at the bottom;
+// scrolling up cancels the pin (the pass-list SetScrollY variant yanks
+// unconditionally — fine for 16 fixed rows, wrong for a live stream).
+void log_box(const char* id, const char* content, float height,
+             bool tail_follow = false) {
     ImGui::PushStyleColor(ImGuiCol_ChildBg, kLogBg);
     ImGui::PushStyleColor(ImGuiCol_Border, kLogBorder);
     ImGui::BeginChild(id, ImVec2(0.0f, height), true,
                       ImGuiWindowFlags_HorizontalScrollbar);
     ImGui::TextUnformatted(content);
+    if (tail_follow &&
+        ImGui::GetScrollY() >= ImGui::GetScrollMaxY()) {
+        ImGui::SetScrollHereY(1.0f);
+    }
     ImGui::EndChild();
     ImGui::PopStyleColor(2);
 }
@@ -996,6 +1038,31 @@ void render_side_panel() {
                                   : "-- receipts cleared — new receipts appear here --");
             }
             log_box("DrawerLog", drawer_text, ImGui::GetContentRegionAvail().y);
+            ImGui::EndTabItem();
+        }
+        if (ImGui::BeginTabItem("DEBUG")) {
+            ImGui::TextDisabled("RAW SERIAL STREAM — read-only (← from board · → to board)");
+            // View-local CLEAR: the debug ring is a passive tap — clearing
+            // it touches nothing downstream (Panel 1 keeps its own view).
+            ImGui::SameLine(ImGui::GetWindowContentRegionMax().x -
+                            ImGui::CalcTextSize("CLEAR").x);
+            if (ImGui::SmallButton("CLEAR##debug")) {
+                debug_ring_reset(&g_ring_debug);
+                g_debug_text[0] = '\0';
+            }
+            // VOID-145: raw wire lines, both directions, verbatim — full
+            // hex payloads included; the unfiltered view behind Panel 1.
+            // Read-only by construction: nothing in this tab writes to
+            // the bouncer (SEND ACK in Panel 4 stays the only wire-write
+            // path). Tail follows only while already at the bottom.
+            debug_ring_render(&g_ring_debug, g_debug_text,
+                              sizeof(g_debug_text));
+            if (g_debug_text[0] == '\0') {
+                std::snprintf(g_debug_text, sizeof(g_debug_text), "%s",
+                              "-- no serial data (bouncer idle or test mode) --");
+            }
+            log_box("DebugLog", g_debug_text,
+                    ImGui::GetContentRegionAvail().y, true);
             ImGui::EndTabItem();
         }
         ImGui::EndTabBar();

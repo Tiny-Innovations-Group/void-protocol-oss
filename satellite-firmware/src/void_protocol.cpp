@@ -89,7 +89,7 @@ void VoidProtocol::begin()
 
     // VOID-143: 12 dBm for flat-sat link margin (was 5). SX1262 hardware
     // ceiling is +22 dBm; UK legal limit is 14 dBm ERP.
-    radio.setOutputPower(12);
+    radio.setOutputPower(6);
 
     updateDisplay("READY", "Void v2.1");
 }

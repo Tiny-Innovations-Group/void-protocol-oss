@@ -66,6 +66,11 @@ static bool lora_tx_via_serial(const uint8_t* data, size_t len, void* /*user*/) 
     line[line_len]     = '\n';
     line[line_len + 1] = '\0';
 
+    // VOID-145: raw serial tap (TX side) — echo the exact wire line before
+    // the write (attempted TXs are logged even when the write fails; the
+    // caller's existing diagnostics report the outcome). line ends in '\n'.
+    std::printf("[SERIAL-TX] %s", line);
+
     const int n = serial_write_bytes(reinterpret_cast<const uint8_t*>(line),
                                      line_len + 1);
     return n >= 0;
@@ -94,6 +99,9 @@ static bool lora_tx_ack_via_serial(const uint8_t* data, size_t len) {
     const size_t line_len = kPrefixLen + len * 2u;
     line[line_len]     = '\n';
     line[line_len + 1] = '\0';
+
+    // VOID-145: raw serial tap (TX side) — see lora_tx_via_serial.
+    std::printf("[SERIAL-TX] %s", line);
 
     const int n = serial_write_bytes(reinterpret_cast<const uint8_t*>(line),
                                      line_len + 1);
@@ -215,11 +223,16 @@ void cli_listener() {
             if (std::strcmp(input, "h") == 0) {
                 std::puts("[CLI] Triggering Handshake via USB...");
                 const char* cmd = "H\n";
+                // VOID-145: raw serial tap (TX side). cmd carries its own
+                // '\n' — echo prints exactly the wire line, nothing more.
+                std::printf("[SERIAL-TX] %s", cmd);
                 serial_write_bytes(reinterpret_cast<const uint8_t*>(cmd), std::strlen(cmd));
             } 
             else if (std::strcmp(input, "ack") == 0) {
                 std::puts("[CLI] Authorizing Buy...");
                 const char* cmd = "ACK_BUY\n";
+                // VOID-145: raw serial tap (TX side) — see the 'h' branch.
+                std::printf("[SERIAL-TX] %s", cmd);
                 serial_write_bytes(reinterpret_cast<const uint8_t*>(cmd), std::strlen(cmd));
             } 
             else if (std::strcmp(input, "tst_ack") == 0) {
@@ -274,6 +287,15 @@ int main(int argc, char* argv[]) {
                 if (c == '\n' || c == '\r') {
                     if (line_idx > 0) {
                         line_buf[line_idx] = '\0'; 
+                        
+                        // VOID-145: raw serial tap — echo every completed RX
+                        // line verbatim BEFORE the dispatch chain, so matched
+                        // (PACKET_B:/INVOICE:/HEARTBEAT_*:), malformed and
+                        // diagnostic lines all reach the UI's DEBUG tab. The
+                        // existing line-buffered stdout pipe (VOID-142) is
+                        // the single tap point — this process stays the sole
+                        // serial owner; no second connection is opened.
+                        std::printf("[SERIAL-RX] %s\n", line_buf);
                         
                         if (std::strncmp(line_buf, "PACKET_B:", 9) == 0) {
                             std::puts("\n[HARDWARE] 📦 Received PACKET B from Sat B. Routing to Bouncer...");

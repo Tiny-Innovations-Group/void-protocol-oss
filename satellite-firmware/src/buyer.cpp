@@ -238,6 +238,9 @@ void runBuyerLoop() {
         }
     }
 
+    /* ---------------------------------------------------------
+    // Removed for demo
+
     // =====================================================================
     // 1c. VOID-022: 30 s heartbeat telemetry (droppable, CAD-gated, 1 s
     //     backoff while busy). Skipped while an RX is pending (shared
@@ -250,6 +253,7 @@ void runBuyerLoop() {
                             : heartbeat_tx::kSysStateRxActive,
             &rx_flag);
     }
+    // --------------------------------------------------------- */
 
     // =====================================================================
     // 2. Serial ground-link commands

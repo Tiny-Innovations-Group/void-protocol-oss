@@ -171,7 +171,7 @@ void runSellerLoop() {
     // safety net so a dropped or no-show transaction re-advertises rather
     // than wedging the seller silent forever.
     static constexpr unsigned long kBeaconIntervalMs = 8000;
-    static constexpr unsigned long kEngagedTimeoutMs = 8000;  // VOID-143: fast demo retry
+    static constexpr unsigned long kEngagedTimeoutMs = 15000;  // VOID-143: fast demo retry
 
     // One-shot ISR arm: register DIO1 packet-received callback and put
     // the radio into continuous RX on first entry.
@@ -402,6 +402,10 @@ void runSellerLoop() {
         }
     }
 
+
+
+    /* ---------------------------------------------------------
+    // Removed for demo
     // ---------------------------------------------------------
     // 2d. VOID-022: 30 s heartbeat telemetry (droppable, CAD-gated,
     //     1 s backoff while busy). Only when no RX is pending — TX
@@ -416,4 +420,6 @@ void runSellerLoop() {
                 : heartbeat_tx::kSysStateConnected,
             &rx_flag);
     }
+            */
+
 }
