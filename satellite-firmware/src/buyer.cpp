@@ -42,10 +42,6 @@ static unsigned long last_tx_ms = 0;  // 0 sentinel = no TX yet this session
 // best-effort. ~6 attempts × (8..48 ms backoff) ≈ <200 ms worst case.
 static constexpr uint8_t kLbtMaxAttempts = 6;
 
-#if VOID_PROTOCOL_TYPE == 2
-static constexpr uint32_t SNLP_SYNC_WORD = 0x1D01A5A5u;
-#endif
-
 // Extract the 11-bit CCSDS APID from a raw received buffer.
 // Caller MUST have already bounded the length to >= SIZE_VOID_HEADER.
 static uint16_t extractAPID(const uint8_t* buf) {
@@ -56,19 +52,6 @@ static uint16_t extractAPID(const uint8_t* buf) {
     return static_cast<uint16_t>(((buf[0] & 0x07u) << 8) | buf[1]);
 #endif
 }
-
-#if VOID_PROTOCOL_TYPE == 2
-// First-line filter against noise and foreign LoRa traffic on crowded
-// amateur bands (Protocol-spec-SNLP.md §1.1).
-static bool validSyncWord(const uint8_t* buf) {
-    const uint32_t sync =
-          (static_cast<uint32_t>(buf[0]) << 24)
-        | (static_cast<uint32_t>(buf[1]) << 16)
-        | (static_cast<uint32_t>(buf[2]) <<  8)
-        |  static_cast<uint32_t>(buf[3]);
-    return sync == SNLP_SYNC_WORD;
-}
-#endif
 
 // Pack a VOID header (BE) for a non-command telemetry packet into the
 // supplied byte buffer. `body_len` is the full frame size minus
@@ -153,7 +136,9 @@ void runBuyerLoop() {
             const int state = Void.radio.readData(rx_buffer, len);
             if (state == RADIOLIB_ERR_NONE) {
 #if VOID_PROTOCOL_TYPE == 2
-                if (!validSyncWord(rx_buffer)) {
+                // VOID-143: unified SNLP sync-word filter (moved from a
+                // file-static here into VoidProtocol so the seller shares it).
+                if (!Void.validSyncWord(rx_buffer)) {
                     Void.radio.startReceive();
                     return;
                 }
@@ -229,6 +214,11 @@ void runBuyerLoop() {
                         Void.hexDump(rx_buffer, len);
                     }
                 }
+            } else {
+                // VOID-143: surface RadioLib hardware errors (CRC mismatch,
+                // SPI faults) instead of swallowing them silently.
+                Serial.print("ERR: RadioLib readData failure code: ");
+                Serial.println(state);
             }
         }
         Void.radio.startReceive();  // re-arm RX for next packet
@@ -377,6 +367,14 @@ void runBuyerLoop() {
 
             last_tx_ms      = millis();
             invoice_pending = false;
+        }
+        // -----------------------------------------------------------------
+        // VOID-143: orphan ACK_BUY — ground authorised a buy but no
+        // invoice is pending (invoice dropped / already consumed). Log it
+        // instead of discarding silently so the operator sees the lost leg.
+        // -----------------------------------------------------------------
+        else if (strncmp(serial_buf, "ACK_BUY", 7) == 0) {
+            Serial.println("WARN: ACK_BUY received but no invoice is pending.");
         }
         // -----------------------------------------------------------------
         // Ground relays an L2 ACK / tunnel payload — broadcast to Sat A

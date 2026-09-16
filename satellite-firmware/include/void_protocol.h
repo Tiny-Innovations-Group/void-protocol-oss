@@ -53,6 +53,17 @@ public:
     // base 0x00) and mis-report an app-layer CRC failure.
     bool isRealReception();
 
+#if VOID_PROTOCOL_TYPE == 2
+    // VOID-143: SNLP sync-word validation (Protocol-spec-SNLP.md §1.1).
+    // First-line filter against noise and foreign LoRa traffic on crowded
+    // amateur bands — every SNLP frame opens with sync word 0x1D01A5A5
+    // (BE32); frames that fail it are dropped before any header parsing.
+    // Previously file-static in buyer.cpp only — the seller parsed inbound
+    // frames with no sync check, risking false CRC passes on noise. Unifies
+    // both roles on one implementation.
+    bool validSyncWord(const uint8_t* buf);
+#endif
+
     #ifdef DEMO
     void pollDemoTriggers();
     #endif
