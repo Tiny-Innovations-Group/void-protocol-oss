@@ -1,5 +1,69 @@
 [
   {
+    "hash": "b33cb55dac8eebbdab7084635499cf20393e3c83",
+    "short_hash": "b33cb55",
+    "author": "director-TIG",
+    "date": "2026-09-13T17:41:42+01:00",
+    "message": "VOID-142: operator console polish — CLEAR buttons on all streams + HTTP log header\n\nOperator request: logs get messy mid-demo; receipts drawer and HTTP\nlog need at-a-glance readability.\n\n- CLEAR button on every log surface, right-aligned on each label row\n  (SmallButton + Panel-4 RUN-clock alignment idiom): Panel 1 RF,\n  Panel 2 HTTP, Panel 3 blockchain, EXECUTED QUERIES, error strip\n  (empties all lines regardless of active filter tab). Rings reset\n  via the existing log_ring_reset(); per-frame snapshot re-empties\n  the box.\n- Receipts drawer CLEAR is view-only: receipts_clear_view()\n  snapshots current (payment_id, tx_hash) pairs into a bounded\n  hidden[32] table in receipts_view_t; receipt_is_hidden() filters\n  the drawer across the 2 Hz re-reads. Cleared receipts stay hidden\n  (incl. later PENDING->DISPATCHED flips); NEW receipts appear\n  normally. receipts.json is never modified — TRL 4 restart evidence\n  preserved; Settlements counter + Restart-safe gate stay file-truth.\n  Empty state notes \"-- receipts cleared --\".\n- HTTP log gains a pinned column header over gin's request lines,\n  pipes aligned exactly to gin v1.11.0 DefaultLogFormatter (verified:\n  cols 28/34/50/68): TIMESTAMP | CODE | LATENCY | IP | METHOD | PATH.\n  Non-gin gateway lines (level=info events, packet dumps) appear as-is.\n\nVerified: clean -Werror build; 41/41 ctest; 6s runtime smoke;\n6-assert receipts-clear harness (populate -> clear -> re-poll ->\nnew-receipt-visible -> hidden status flip -> clear-again).\nDecision graph 311-313.",
+    "files_changed": 3
+  },
+  {
+    "hash": "93d31ad22eaf7424cad56406c5aa642d7ce29a27",
+    "short_hash": "93d31ad",
+    "author": "director-TIG",
+    "date": "2026-09-13T17:41:28+01:00",
+    "message": "VOID-142 stage-2: bouncer child wiring — Panel 1 RF legs, SEND ACK, live gate\n\n- proc_manager: proc_bouncer_start(serial_port) spawns the\n  ground-station bouncer binary with piped stdin + merged\n  stdout/stderr (same log-pipe pattern as anvil/gateway);\n  proc_stdin_write writes CLI lines (\"ack\\n\") to a child's stdin.\n  SIGPIPE already ignored by proc_init.\n- bouncer (src/main.cpp): setvbuf(stdout, _IOLBF) so piped stdout\n  flushes per line — Panel 1 receives each log promptly\n  (PORT_SPEC section 8 gotcha).\n- Panel 1 goes live: bouncer stdout (\"rf\" tag) fills a new RF ring\n  and drives the 7-leg FSM — [HARDWARE] invoice/payment lines,\n  [BOUNCER] verify pass/tamper, [ACK] emit, [EGRESS] receipt\n  dispatch, [TELEMETRY] heartbeat, [SAT-B] PACKET_D_RX closes the\n  D leg. Gateway milestone keywords (settlebatch.ok,\n  receipt.persisted) drive SETTLE / C legs.\n- Live gate strip: Passes n/10, tamper rejects (each FAIL resets the\n  run), restart-safe from receipts.json persistence (VOID-130).\n- Panel 4: SERIAL PORT input (empty = test mode, tst_ack path) +\n  SEND ACK button (bouncer CLI stdin); START and the deploy chain\n  start the bouncer behind the gateway.\n- Errors ring gains the \"rf\" source tag + bouncer drop keywords.\n\nClean -Werror build; 41/41 ctest.",
+    "files_changed": 4
+  },
+  {
+    "hash": "b5dc41213fb921381d109c4b02c22ccd6c39ae6a",
+    "short_hash": "b5dc412",
+    "author": "director-TIG",
+    "date": "2026-09-13T14:07:45+01:00",
+    "message": "VOID-142 cleanup: two-line receipts wrap, wrapped NEXT QUERY, drop CONTRACT VALUE\n\n- VIEW RECEIPTS: two indented lines per record (payment_id on line 1,\n  tx_hash + status on line 2) — deterministic wrap, no mid-field\n  breaks. Bounded writes with explicit NUL placement, sized for the\n  long form.\n- NEXT QUERY (raw): new wrap_text helper inserts newline BEFORE a\n  >72-char token run (hard-breaks only >width tokens). Preview box\n  height SC(56) so 2-3 wrapped lines are readable. Executed ring\n  stays single-line.\n- CONTRACT VALUE removed from EDIT CONTRACT — operator-confirmed\n  there is no value sent with forge create. Deletes the input and\n  g_contract_value; digit_filter removed (only use). address_filter\n  stays for escrow edit.\n\nClean -Werror build, 41/41 ctest.",
+    "files_changed": 1
+  },
+  {
+    "hash": "6e63841e69dcb1e5cb9a2ee1cef6db4e8f200198",
+    "short_hash": "6e63841",
+    "author": "director-TIG",
+    "date": "2026-09-13T13:53:09+01:00",
+    "message": "VOID-142: SNAP FULL (maximize + uniform scale) + raw forge query lines in EDIT CONTRACT\n\nSNAP FULL (smaller-screen readability):\n- glfwMaximizeWindow + uniform render scale: g_scale over all frozen\n  geometry (begin_panel rects, markers, buttons, side panel, error\n  strip, inner log heights, help modal) and io.FontGlobalScale. Frozen\n  layout invariant at scale 1.0 — PORT_SPEC parity preserved.\n- Base width tracks the side panel: SHOW/HIDE PANEL while snapped\n  recomputes scale (1280 console-only ↔ 1760 with panel).\n- Panel 4 row 3 becomes four columns: SEND ACK | SHOW/HIDE PANEL |\n  HELP | SNAP↔RESTORE. Window stays non-resizable; toggle is explicit.\n\nRaw query visibility (EDIT CONTRACT tab, per operator request):\n- forge argv pieces moved to exportable statics in proc_manager\n  (kForgeArgv); proc_forge_cmdline() assembles a single-line preview —\n  preview == executed command, no drift.\n- NEXT QUERY (raw) preview box + EXECUTED QUERIES (raw) ring: LOAD\n  pushes the executed line; harvest pushes DEPLOY OK/FAIL. Read-only\n  text boxes, newest-at-bottom, bounded ring.\n\nClean -Werror build; 41/41 ctest; unconnected + live-stack smokes.",
+    "files_changed": 3
+  },
+  {
+    "hash": "174f4451748e2afc94c7f866a757e4983e5f4a3b",
+    "short_hash": "174f445",
+    "author": "director-TIG",
+    "date": "2026-09-13T13:24:06+01:00",
+    "message": "VOID-142 fix: START auto-chain, async deploy thread, side-panel tabs, errors filter\n\nOperator-reported bug: single START click brought up Panel 3 but not\nPanel 2 — the gateway spawn hard-gates on an empty escrow buffer, and\nLOAD only restarts when already running. FIXES:\n- START auto-chain: empty escrow → async deploy → harvest spawns the\n  gateway. One click raises Panels 2+3.\n- Async deploy: std::thread worker runs pure forge spawn/parse\n  (proc_forge_deploy); render thread owns anvil/lifecycle and harvests\n  via std::atomic state. render thread no longer freezes on LOAD.\n- Side panel (spots of the old receipts drawer) with TabBar:\n  EDIT CONTRACT (moved CONTRACT VALUE, read-only CURRENT, editable\n  address buffer + APPLY via proc_set_escrow validator, duplicate\n  LOAD NEXT CONTRACT) and VIEW RECEIPTS (upsert table moved as-is).\n  Panel 4 slimmed to run/panel-toggle/help/exit; VIEW button renamed\n  SHOW/HIDE PANEL. Panel 3 Contract stays read-only.\n- Errors tab: ring entries carry a source tag (gw/anvil/ui); ERRORS\n  label row gets ALL | GATEWAY | ANVIL | UI filter buttons, frozen\n  98px strip geometry kept.\n- proc_manager split: forge-only worker + proc_set_escrow validator +\n  proc_gateway_restart helper. Blocking proc_deploy_contract removed.\n- Clean -Werror build; 41/41 ctest; unconnected + live smokes.",
+    "files_changed": 4
+  },
+  {
+    "hash": "667904ee661d3e74f579cb9516ec754fd624de41",
+    "short_hash": "667904e",
+    "author": "director-TIG",
+    "date": "2026-09-13T12:51:51+01:00",
+    "message": "VOID-142 1c: live panels — status/chain pollers, receipts tailer, ring logs\n\n- ui/log_store.h: bounded ring of fixed-width lines; single-threaded\n  render, no locking. Child-pipe line assembly drains into HTTP /\n  blockchain / error rings; settlement keywords mirror to Panel 3,\n  warn/error keywords to the error strip.\n- ui/http_poller.{h,cpp}: bounded raw-socket GET/POST-JSON, mirrors\n  bouncer's VOID-138 transport (timeouts, no silent truncation).\n- ui/service_poller.{h,cpp}: 2 Hz GET /api/v1/status → Panel 2 fields;\n  eth_blockNumber → Panel 3 Block/status. Bounded JSON scans.\n- ui/receipts_tailer.{h,cpp}: reads receipts.json (env or repo-root\n  anchored) with latest-per-key upsert; drawer renders bounded table,\n  Settlements counter. api/v1/status smoke against the live stack\n  confirms chain_enabled:true + dispatched receipts from the bench file.\n- Clean -Werror build; ctest 41/41; unconnected + live-stack smokes.",
+    "files_changed": 9
+  },
+  {
+    "hash": "d55cae764d85b1d9a0c864f2a090dae4d88d4230",
+    "short_hash": "d55cae7",
+    "author": "director-TIG",
+    "date": "2026-09-13T12:22:05+01:00",
+    "message": "VOID-142 1b: UI process manager — anvil/gateway spawn, START/STOP, LOAD NEXT CONTRACT\n\n- ui/proc_manager.{h,cpp}: posix_spawn children on own process groups\n  (group-kill reaches go-run grandchildren), non-blocking log pipes,\n  forge create deploy + 'Deployed to' bounded parse, repo-root anchor\n  via .git walk-up, SIGPIPE ignored. No heap/std::string/VLA; static\n  envp builder avoids setenv. Win32 stubs keep the target portable.\n- main.cpp: START (anvil→gateway with VOID_ALPHA_PLAINTEXT +\n  VOID_ESCROW_ADDRESS), STOP (SIGTERM→SIGKILL escalate), LOAD NEXT\n  CONTRACT (deploy + live re-point, echoes address), EXIT (graceful\n  stop_all → window close). Panel 3 Contract field live.\n- macOS 26: addchdir (renamed from addchdir_np) behind __APPLE__.\n- Clean -Werror build; ground-station ctest 41/41; 5s runtime smoke.",
+    "files_changed": 4
+  },
+  {
+    "hash": "674305eeb9c9b7fb0c83fcaaebd21478faced20a",
+    "short_hash": "674305e",
+    "author": "director-TIG",
+    "date": "2026-09-13T12:12:44+01:00",
+    "message": "VOID-142 1a: gateway GET /api/v1/status + counters + receipt CountByStatus\n\nRead-only operator-console status for the ImGui ground station (Panel 2):\n- handlers/status.go: uptime, packets_in, sig_verify_ok/fail,\n  intents_queued, receipts_pending/dispatched, chain_enabled,\n  escrow_address. Monotonic atomics at the exact ingest.go log sites.\n- receipt.Store.CountByStatus(): latest-line-per-dedup-key split.\n- Route wired in cmd/server/main.go; EscrowAddress set at chain init.\n- Tests: 3 handler (defaults / counters-reflect-ingest incl. tampered\n  sig / receipt counts) + 3 store CountByStatus. go test ./... green;\n  live smoke 200 in parse-only mode.",
+    "files_changed": 6
+  },
+  {
     "hash": "b4e0531ddedbf1834e5c829264b4bff82865ba9b",
     "short_hash": "b4e0531",
     "author": "director-TIG",

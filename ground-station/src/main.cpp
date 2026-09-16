@@ -235,6 +235,10 @@ void cli_listener() {
 
 // --- Main execution ---
 int main(int argc, char* argv[]) {
+    // VOID-142 stage-2: when spawned as a UI child, stdout is a pipe and
+    // stdio goes full-buffered — line-buffer it so Panel 1 receives each
+    // log line promptly (PORT_SPEC §8). stderr is unbuffered by default.
+    std::setvbuf(stdout, nullptr, _IOLBF, 0);
     // We allow running without a COM port strictly for testing the 'tst_ack' CLI command
     bool hardware_connected = false;
     

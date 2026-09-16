@@ -191,6 +191,9 @@ func main() {
 		defer cleanup()
 
 		handlers.Submitter = chainDeps.submitter
+		// VOID-142: expose the contract identity to the status endpoint
+		// so the operator console shows what the gateway is pointed at.
+		handlers.EscrowAddress = chainDeps.addr.Hex()
 		log.Printf("🔗 On-chain submitter wired | rpc=%s escrow=%s chain_id=%s",
 			chainDeps.rpcURL, chainDeps.addr.Hex(), chainDeps.chainID.String())
 
@@ -205,6 +208,10 @@ func main() {
 	v1 := router.Group("/api/v1")
 	{
 		v1.POST("/ingest", handlers.IngestPacket)
+
+		// VOID-142: read-only status for the ImGui ground-station
+		// console (Panel 2). Always 200 when the process is up.
+		v1.GET("/status", handlers.HandleStatus)
 
 		// VOID-135b: bouncer drains pending receipts here, TXes each
 		// PacketC via LoRa, then ACKs back. Routes always mount — if

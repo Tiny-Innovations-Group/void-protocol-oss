@@ -110,6 +110,28 @@ body {
 .leg-name  { display: inline-block; width: 19ch; white-space: pre; }
 .leg-state { color: var(--text-dim); }
 
+/* ---- Pipeline top zone: legs + PASS HISTORY side by side ---- */
+.pipe-cols { display: flex; gap: 8px; align-items: stretch; }
+.pipe-cols .legs { flex: 0 0 auto; }
+.pass-history {
+  flex: 1 1 auto;
+  min-width: 0;
+  background: #0a0a0a;
+  border: 1px solid #2a2a30;
+  padding: 4px 6px;
+  display: flex;
+  flex-direction: column;
+}
+.pass-history .log-label { margin-top: 0; }
+.streak { margin: 2px 0 4px; }
+.streak .sd-on  { color: #43c666; }
+.streak .sd-off { color: var(--text-dim); }
+.streak .sd-count { color: var(--text-dim); margin-left: 8px; }
+.pass-rows { flex: 1 1 auto; min-height: 0; overflow: auto; white-space: pre; }
+.pass-rows .pr { display: block; }
+.pass-rows .pr .dot { margin-right: 7px; }
+.pass-rows .pr-rst  { color: #e64040; }
+
 /* ---- Leg state colors ---- */
 .st-idle   { color: var(--text-dim); }
 .st-active { color: var(--btn-hover); }
@@ -238,7 +260,14 @@ input:focus { background: #3b5587; outline: 1px solid var(--btn-hover); }
   <section class="panel panel-pipeline">
     <h2><span class="dot"></span>1. RF Comms (Ground ↔ Sat)</h2>
     <hr class="rule">
-    <ul class="legs" id="legs"></ul>
+    <div class="pipe-cols">
+      <ul class="legs" id="legs"></ul>
+      <div class="pass-history">
+        <div class="log-label dim">PASS HISTORY (newest at bottom)</div>
+        <div class="streak" id="streak"></div>
+        <div class="pass-rows" id="pass-rows"></div>
+      </div>
+    </div>
     <hr class="rule">
     <div class="log-label dim">LOG (sample)</div>
     <div class="log">10:14:02  A     Invoice TX'd                 apid=100 len=80
@@ -405,6 +434,50 @@ function setLegState(name, state) {
     }
   }
 }
+
+// Pass history mirrors pass_ring_t in ui/pass_store.h (session-only).
+// `n` is the streak-relative pass number; red reset rows mark tamper
+// rejects that zeroed the streak.
+const PASS_HISTORY = [
+  { reset: false, n: 1, t: "10:14:18", dur: "16.2s" },
+  { reset: true,  n: 0, t: "10:15:47" },
+  { reset: false, n: 1, t: "10:16:02", dur: "15.8s" },
+  { reset: false, n: 2, t: "10:16:55", dur: "14.9s" },
+  { reset: false, n: 3, t: "10:17:41", dur: "15.3s" },
+];
+
+const rowsEl = document.getElementById("pass-rows");
+for (const rec of PASS_HISTORY) {
+  const row = document.createElement("span");
+  row.className = "pr" + (rec.reset ? " pr-rst" : "");
+  const mark = document.createElement("span");
+  mark.className = "dot " + (rec.reset ? "dot-fail" : "dot-ok");
+  row.appendChild(mark);
+  row.appendChild(document.createTextNode(
+    rec.reset ? "RESET — tamper " + rec.t
+              : "#" + rec.n + "  " + rec.t + "  " + rec.dur));
+  rowsEl.appendChild(row);
+}
+
+// Streak dots: 10 slots, filled = current consecutive passes.
+const streak = PASS_HISTORY[PASS_HISTORY.length - 1].n;
+const streakEl = document.getElementById("streak");
+for (let i = 0; i < 10; ++i) {
+  const sd = document.createElement("span");
+  sd.className = i < streak ? "sd-on" : "sd-off";
+  sd.textContent = i < streak ? "●" : "○";
+  streakEl.appendChild(sd);
+}
+const sdCount = document.createElement("span");
+sdCount.className = "sd-count";
+sdCount.textContent = streak + "/10";
+streakEl.appendChild(sdCount);
+rowsEl.scrollTop = rowsEl.scrollHeight; // newest at bottom, in view
+
+// Gate strip stays coherent with the sample history above.
+document.getElementById("pass-count").textContent = streak;
+document.getElementById("tamper-count").textContent =
+  PASS_HISTORY.filter(function (r) { return r.reset; }).length;
 
 // Contract value: digits only, bounded (mirrors the planned static char[32] field).
 const valueInput = document.getElementById("contract-value");
