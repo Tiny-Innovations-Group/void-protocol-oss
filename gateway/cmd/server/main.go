@@ -14,6 +14,7 @@ import (
 	"github.com/Tiny-Innovations-Group/void-protocol-oss/gateway/internal/core/chain"
 	"github.com/Tiny-Innovations-Group/void-protocol-oss/gateway/internal/core/receipt"
 	"github.com/Tiny-Innovations-Group/void-protocol-oss/gateway/internal/core/registry"
+	"github.com/Tiny-Innovations-Group/void-protocol-oss/gateway/internal/core/telemetry"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/ethclient"
 
@@ -35,6 +36,7 @@ import (
 //	VOID_ESCROW_ADDRESS      — deployed Escrow contract address (enables on-chain path)
 //	VOID_GATEWAY_PRIVATE_KEY — hex secp256k1 key for signing settleBatch (Anvil acct #0 default)
 //	VOID_RECEIPTS_PATH       — default gateway/data/receipts.json
+//	VOID_HEARTBEATS_PATH     — default gateway/data/heartbeats.json (VOID-022)
 //	VOID_RECEIPTS_SELLER_SEED — hex Ed25519 seed for PacketC signing (flat-sat demo default)
 //	VOID_RECEIPTS_SELLER_APID — default 100 (apidSatA from golden vectors)
 const (
@@ -60,6 +62,12 @@ const (
 	// two files — which breaks the #17 "0 double-settles across restart"
 	// criterion (the dedup set only loads from one of them).
 	defaultReceiptsRelPath = "gateway/data/receipts.json"
+
+	// VOID-022: heartbeat evidence log. Same repo-root anchoring as
+	// receipts.json (and the same VOID-139 rationale — the evidence
+	// pack must land in ONE deterministic location regardless of
+	// launch CWD). Override with VOID_HEARTBEATS_PATH.
+	defaultHeartbeatsRelPath = "gateway/data/heartbeats.json"
 )
 
 // findRepoRoot walks up from the current working directory until it
@@ -109,6 +117,38 @@ func resolveReceiptsPath() (string, error) {
 	return filepath.Join(root, defaultReceiptsRelPath), nil
 }
 
+// resolveHeartbeatsPath mirrors resolveReceiptsPath for the VOID-022
+// heartbeat evidence log: explicit VOID_HEARTBEATS_PATH wins, else the
+// path anchors to the repo root.
+func resolveHeartbeatsPath() (string, error) {
+	if p := os.Getenv("VOID_HEARTBEATS_PATH"); p != "" {
+		return filepath.Abs(p)
+	}
+	root, err := findRepoRoot()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(root, defaultHeartbeatsRelPath), nil
+}
+
+// startHeartbeatLog opens the heartbeats.json evidence store (VOID-022)
+// and wires it into the ingest handler. No chain dependency — the log
+// runs even when the on-chain pipeline is disabled, so parse-only demo
+// configurations still accumulate telemetry evidence.
+func startHeartbeatLog() error {
+	path, err := resolveHeartbeatsPath()
+	if err != nil {
+		return err
+	}
+	store, err := telemetry.NewStore(path)
+	if err != nil {
+		return err
+	}
+	handlers.Heartbeats = store
+	log.Printf("💓 VOID-022: heartbeat evidence log | path=%s", path)
+	return nil
+}
+
 func main() {
 	// VOID-127: Alpha plaintext mode — when set, the gateway treats
 	// enc_payload as cleartext (no ChaCha20 decrypt). Ed25519 signature
@@ -134,6 +174,13 @@ func main() {
 		log.Fatalf("flat-sat demo key load failed: %v", err)
 	}
 
+	// VOID-022: heartbeat evidence log — append-only JSONL beside
+	// receipts.json. The bouncer forwards HEARTBEAT_TX/RX frames from
+	// the buyer board's serial stream to /ingest, which lands them here.
+	if err := startHeartbeatLog(); err != nil {
+		log.Fatalf("heartbeat log init failed: %v", err)
+	}
+
 	// --- On-chain pipeline (VOID-052 submitter + VOID-135a receipts). ---
 	// Both share the same ethclient so we dial once.
 	chainDeps, cleanup, err := maybeInitChain()
@@ -144,6 +191,9 @@ func main() {
 		defer cleanup()
 
 		handlers.Submitter = chainDeps.submitter
+		// VOID-142: expose the contract identity to the status endpoint
+		// so the operator console shows what the gateway is pointed at.
+		handlers.EscrowAddress = chainDeps.addr.Hex()
 		log.Printf("🔗 On-chain submitter wired | rpc=%s escrow=%s chain_id=%s",
 			chainDeps.rpcURL, chainDeps.addr.Hex(), chainDeps.chainID.String())
 
@@ -158,6 +208,10 @@ func main() {
 	v1 := router.Group("/api/v1")
 	{
 		v1.POST("/ingest", handlers.IngestPacket)
+
+		// VOID-142: read-only status for the ImGui ground-station
+		// console (Panel 2). Always 200 when the process is up.
+		v1.GET("/status", handlers.HandleStatus)
 
 		// VOID-135b: bouncer drains pending receipts here, TXes each
 		// PacketC via LoRa, then ACKs back. Routes always mount — if

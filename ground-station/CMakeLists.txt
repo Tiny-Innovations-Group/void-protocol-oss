@@ -158,3 +158,122 @@ add_custom_command(
     COMMAND ${CMAKE_COMMAND} -E echo "{\"bomFormat\": \"CycloneDX\", \"specVersion\": \"1.4\", \"component\": {\"name\": \"VoidGroundStation\", \"version\": \"2.1.1\", \"type\": \"application\", \"components\": [{\"name\": \"libsodium\", \"version\": \"1.0.20-RELEASE\"}, {\"name\": \"void-core\", \"version\": \"2.1.0\"}]}}" > ${SBOM_OUTPUT}
     COMMENT "🛰️ Generating Software Bill of Materials (SBOM) for Audit compliance..."
 )
+
+# --- 9. OPERATOR INTERACTIVE UI (VOID-141) ---
+option(VOID_BUILD_UI "Build the Dear ImGui Ground Station UI" OFF)
+
+if(VOID_BUILD_UI)
+    message(STATUS "🛰️ Preparing to build Dear ImGui Ground Station UI...")
+
+    # Fetch GLFW
+    FetchContent_Declare(
+        glfw
+        GIT_REPOSITORY https://github.com/glfw/glfw.git
+        GIT_TAG 3.3.8
+    )
+    set(GLFW_BUILD_DOCS OFF CACHE BOOL "" FORCE)
+    set(GLFW_BUILD_TESTS OFF CACHE BOOL "" FORCE)
+    set(GLFW_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
+    set(GLFW_INSTALL OFF CACHE BOOL "" FORCE)
+    FetchContent_MakeAvailable(glfw)
+
+    # Fetch Dear ImGui
+    FetchContent_Declare(
+        imgui
+        GIT_REPOSITORY https://github.com/ocornut/imgui.git
+        GIT_TAG v1.90.5
+    )
+    FetchContent_GetProperties(imgui)
+    if(NOT imgui_POPULATED)
+        FetchContent_Populate(imgui)
+    endif()
+
+    # Define ImGui static library including GLFW + OpenGL3 backends
+    add_library(imgui STATIC
+        ${imgui_SOURCE_DIR}/imgui.cpp
+        ${imgui_SOURCE_DIR}/imgui_demo.cpp
+        ${imgui_SOURCE_DIR}/imgui_draw.cpp
+        ${imgui_SOURCE_DIR}/imgui_tables.cpp
+        ${imgui_SOURCE_DIR}/imgui_widgets.cpp
+        ${imgui_SOURCE_DIR}/backends/imgui_impl_glfw.cpp
+        ${imgui_SOURCE_DIR}/backends/imgui_impl_opengl3.cpp
+    )
+
+    # Note: On macOS, OpenGL is deprecated but OpenGL3 is still standard.
+    # We must find OpenGL package.
+    find_package(OpenGL REQUIRED)
+
+    target_include_directories(imgui PUBLIC
+        ${imgui_SOURCE_DIR}
+        ${imgui_SOURCE_DIR}/backends
+    )
+
+    # No GL loader define: ImGui v1.90.5 embeds its own loader
+    # (imgui_impl_opengl3_loader.h). Defining IMGUI_IMPL_OPENGL_LOADER_CUSTOM
+    # without providing one breaks the backend build.
+
+    target_link_libraries(imgui PUBLIC
+        glfw
+        OpenGL::GL
+    )
+
+    # Add UI executable
+    add_executable(ground_station_ui
+        ui/main.cpp
+        ui/proc_manager.cpp
+        ui/http_poller.cpp
+        ui/service_poller.cpp
+        ui/receipts_tailer.cpp
+    )
+
+    target_include_directories(ground_station_ui PRIVATE
+        ${CMAKE_SOURCE_DIR}/../void-core/include
+        ${CMAKE_SOURCE_DIR}/src
+        ${CMAKE_SOURCE_DIR}/include
+    )
+
+    # ImGui/GLFW headers are vendored third-party — SYSTEM includes keep their
+    # warnings out of our -Werror build (same exemption as libsodium).
+    target_include_directories(ground_station_ui SYSTEM PRIVATE
+        ${imgui_SOURCE_DIR}
+        ${imgui_SOURCE_DIR}/backends
+    )
+
+    target_compile_definitions(ground_station_ui PRIVATE
+        VOID_PROTOCOL_TYPE=2
+    )
+
+    # Full CERT -Werror stack on our UI glue code (spec VOID-141_IMGUI_PORT_SPEC §9).
+    target_compile_options(ground_station_ui PRIVATE
+        -Wall
+        -Wextra
+        -Werror
+        -Wshadow
+        -Wvla
+        -Wconversion
+        -Wsign-conversion
+        -Wcast-align
+        -Wold-style-cast
+        -Wformat-security
+        -O2
+    )
+
+    target_link_libraries(ground_station_ui PRIVATE
+        imgui
+        sodium
+    )
+
+    if(APPLE)
+        # On macOS, find appropriate frameworks for GLFW
+        find_library(COCOA_LIBRARY Cocoa)
+        find_library(IOKIT_LIBRARY IOKit)
+        find_library(COREVIDEO_LIBRARY CoreVideo)
+        target_link_libraries(ground_station_ui PRIVATE
+            ${COCOA_LIBRARY}
+            ${IOKIT_LIBRARY}
+            ${COREVIDEO_LIBRARY}
+        )
+    elseif(WIN32)
+        target_link_libraries(ground_station_ui PRIVATE ws2_32)
+    endif()
+endif()

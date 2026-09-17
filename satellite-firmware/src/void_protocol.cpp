@@ -14,10 +14,20 @@
 
 VoidProtocol Void;
 
+#if VOID_PROTOCOL_TYPE == 2
+// VOID-143: SNLP sync word (BE32, Protocol-spec-SNLP.md §1.1) — the first
+// four bytes of every SNLP frame. Consumed by validSyncWord().
+static constexpr uint32_t SNLP_SYNC_WORD = 0x1D01A5A5u;
+#endif
+
 void VoidProtocol::begin()
 {
     // 1. Init Serial
     Serial.begin(115200);
+    // VOID-143: cap the Stream timeout at 20 ms. The Arduino default of
+    // 1000 ms made Serial.readBytesUntil() block and blind the LoRa radio
+    // whenever a partial line sat in the UART buffer.
+    Serial.setTimeout(20);
     while (!Serial);
 
     // 2. Init Display
@@ -77,8 +87,9 @@ void VoidProtocol::begin()
             ;
     }
 
-    // Set Output Power to +22 dBm (Heltec V3 limit) legal limit for UK is 14dBm
-    radio.setOutputPower(5);
+    // VOID-143: 12 dBm for flat-sat link margin (was 5). SX1262 hardware
+    // ceiling is +22 dBm; UK legal limit is 14 dBm ERP.
+    radio.setOutputPower(6);
 
     updateDisplay("READY", "Void v2.1");
 }
@@ -126,6 +137,20 @@ uint32_t VoidProtocol::calculateCRC(const uint8_t *data, size_t len)
     }
     return ~crc;
 }
+
+#if VOID_PROTOCOL_TYPE == 2
+// VOID-143: SNLP sync-word filter — see void_protocol.h. SNLP-only: the
+// CCSDS tier has no sync word (its 6-byte primary header starts with the
+// version/ID field).
+bool VoidProtocol::validSyncWord(const uint8_t* buf) {
+    const uint32_t sync =
+          (static_cast<uint32_t>(buf[0]) << 24)
+        | (static_cast<uint32_t>(buf[1]) << 16)
+        | (static_cast<uint32_t>(buf[2]) <<  8)
+        |  static_cast<uint32_t>(buf[3]);
+    return sync == SNLP_SYNC_WORD;
+}
+#endif
 
 // VOID-139: one hardware CAD pass. RadioLib's scanChannel() drives the
 // SX1262's built-in Channel Activity Detection and returns

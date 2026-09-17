@@ -22,6 +22,7 @@
 #include "gateway_client.h"
 #include "egress_poll_client.h"
 #include "egress_orchestrator.h"
+#include "egress_hex.h"            // VOID-022: bounded hex decode for heartbeat lines
 #include "ack_builder.h"
 
 // --- Global State ---
@@ -65,6 +66,11 @@ static bool lora_tx_via_serial(const uint8_t* data, size_t len, void* /*user*/) 
     line[line_len]     = '\n';
     line[line_len + 1] = '\0';
 
+    // VOID-145: raw serial tap (TX side) — echo the exact wire line before
+    // the write (attempted TXs are logged even when the write fails; the
+    // caller's existing diagnostics report the outcome). line ends in '\n'.
+    std::printf("[SERIAL-TX] %s", line);
+
     const int n = serial_write_bytes(reinterpret_cast<const uint8_t*>(line),
                                      line_len + 1);
     return n >= 0;
@@ -93,6 +99,9 @@ static bool lora_tx_ack_via_serial(const uint8_t* data, size_t len) {
     const size_t line_len = kPrefixLen + len * 2u;
     line[line_len]     = '\n';
     line[line_len + 1] = '\0';
+
+    // VOID-145: raw serial tap (TX side) — see lora_tx_via_serial.
+    std::printf("[SERIAL-TX] %s", line);
 
     const int n = serial_write_bytes(reinterpret_cast<const uint8_t*>(line),
                                      line_len + 1);
@@ -214,11 +223,16 @@ void cli_listener() {
             if (std::strcmp(input, "h") == 0) {
                 std::puts("[CLI] Triggering Handshake via USB...");
                 const char* cmd = "H\n";
+                // VOID-145: raw serial tap (TX side). cmd carries its own
+                // '\n' — echo prints exactly the wire line, nothing more.
+                std::printf("[SERIAL-TX] %s", cmd);
                 serial_write_bytes(reinterpret_cast<const uint8_t*>(cmd), std::strlen(cmd));
             } 
             else if (std::strcmp(input, "ack") == 0) {
                 std::puts("[CLI] Authorizing Buy...");
                 const char* cmd = "ACK_BUY\n";
+                // VOID-145: raw serial tap (TX side) — see the 'h' branch.
+                std::printf("[SERIAL-TX] %s", cmd);
                 serial_write_bytes(reinterpret_cast<const uint8_t*>(cmd), std::strlen(cmd));
             } 
             else if (std::strcmp(input, "tst_ack") == 0) {
@@ -234,6 +248,10 @@ void cli_listener() {
 
 // --- Main execution ---
 int main(int argc, char* argv[]) {
+    // VOID-142 stage-2: when spawned as a UI child, stdout is a pipe and
+    // stdio goes full-buffered — line-buffer it so Panel 1 receives each
+    // log line promptly (PORT_SPEC §8). stderr is unbuffered by default.
+    std::setvbuf(stdout, nullptr, _IOLBF, 0);
     // We allow running without a COM port strictly for testing the 'tst_ack' CLI command
     bool hardware_connected = false;
     
@@ -269,6 +287,15 @@ int main(int argc, char* argv[]) {
                 if (c == '\n' || c == '\r') {
                     if (line_idx > 0) {
                         line_buf[line_idx] = '\0'; 
+                        
+                        // VOID-145: raw serial tap — echo every completed RX
+                        // line verbatim BEFORE the dispatch chain, so matched
+                        // (PACKET_B:/INVOICE:/HEARTBEAT_*:), malformed and
+                        // diagnostic lines all reach the UI's DEBUG tab. The
+                        // existing line-buffered stdout pipe (VOID-142) is
+                        // the single tap point — this process stays the sole
+                        // serial owner; no second connection is opened.
+                        std::printf("[SERIAL-RX] %s\n", line_buf);
                         
                         if (std::strncmp(line_buf, "PACKET_B:", 9) == 0) {
                             std::puts("\n[HARDWARE] 📦 Received PACKET B from Sat B. Routing to Bouncer...");
@@ -322,6 +349,42 @@ int main(int argc, char* argv[]) {
                             std::puts("\n[HARDWARE] 📄 Received Packet A (Invoice). Awaiting 'ack' command.");
                         }
                         // ----------------------
+                        // VOID-022: heartbeat evidence lines from the buyer
+                        // board. HEARTBEAT_TX: = the buyer's own frame;
+                        // HEARTBEAT_RX: = a seller frame heard by the buyer's
+                        // RX path (the seller console is not wired to the
+                        // bouncer, so this is how Sat A telemetry reaches the
+                        // ground log). Both carry one 48-byte SNLP heartbeat
+                        // as 96 hex chars — decode with the bounded VOID-138
+                        // decoder and forward the raw frame to the gateway,
+                        // which CRC-gates it and appends heartbeats.json.
+                        else if (std::strncmp(line_buf, "HEARTBEAT_TX:", 13) == 0 ||
+                                 std::strncmp(line_buf, "HEARTBEAT_RX:", 13) == 0) {
+                            constexpr size_t kHbPrefix = 13;
+                            uint8_t hb_bin[SIZE_HEARTBEAT_PCK];
+                            const size_t hex_len = std::strlen(&line_buf[kHbPrefix]);
+                            if (hex_len == sizeof(hb_bin) * 2 &&
+                                egress::hex_decode(&line_buf[kHbPrefix], hex_len,
+                                                   hb_bin, sizeof(hb_bin))) {
+                                if (go_gateway.push_to_l2(hb_bin, sizeof(hb_bin))) {
+                                    std::puts("[TELEMETRY] 💓 Heartbeat forwarded to Gateway.");
+                                } else {
+                                    std::puts("[TELEMETRY] ⚠️  Heartbeat forward failed (non-fatal).");
+                                }
+                            } else {
+                                std::puts("[TELEMETRY] ⚠️  Malformed heartbeat line dropped.");
+                            }
+                        }
+                        // VOID-022: echo every unmatched line from the buyer
+                        // board. The buyer's USB serial is owned by this
+                        // process, so without an echo its diagnostics
+                        // (PACKET_D_RX:, WARN:, HB deferrals, …) are
+                        // invisible to the operator — which made the
+                        // 2026-06-12 heartbeat wedge needlessly hard to
+                        // triage. Bounded: line_buf is NUL-terminated above.
+                        else {
+                            std::printf("[SAT-B] %s\n", line_buf);
+                        }
                         line_idx = 0; // Reset buffer
                     }
                 } else if (line_idx < sizeof(line_buf) - 1) {

@@ -3,3 +3,8 @@
 # the dir itself is tracked via gateway/data/.gitkeep.
 data/receipts.json
 data/receipts.json.*
+
+# VOID-022: runtime-generated heartbeat evidence log (same treatment as
+# receipts.json above); the dir itself is tracked via gateway/data/.gitkeep.
+data/heartbeats.json
+data/heartbeats.json.*
