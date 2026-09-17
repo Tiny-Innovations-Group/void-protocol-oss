@@ -1,0 +1,1455 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Void Protocol v2.1 — Venture Presentation</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link
+    href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap"
+    rel="stylesheet">
+  <style>
+    :root {
+      --bg: #060911;
+      --card-bg: rgba(17, 24, 39, 0.7);
+      --card-hover: rgba(31, 41, 55, 0.85);
+      --border: rgba(56, 189, 248, 0.15);
+      --border-subtle: rgba(255, 255, 255, 0.07);
+      --text: #f8fafc;
+      --text-muted: #94a3b8;
+      --accent: #38bdf8;
+      --accent-glow: rgba(56, 189, 248, 0.25);
+      --emerald: #10b981;
+      --emerald-glow: rgba(16, 185, 129, 0.2);
+      --amber: #f59e0b;
+      --font-sans: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+      --font-mono: 'JetBrains Mono', monospace;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    html {
+      scroll-snap-type: y mandatory;
+      scroll-behavior: smooth;
+      background-color: var(--bg);
+      color: var(--text);
+      font-family: var(--font-sans);
+    }
+
+    body {
+      overflow-y: scroll;
+    }
+
+    .slide {
+      min-height: 100vh;
+      scroll-snap-align: start;
+      scroll-snap-stop: always;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      padding: 4rem 6rem 3rem 6rem;
+      position: relative;
+      background: radial-gradient(circle at 80% 20%, rgba(56, 189, 248, 0.05) 0%, transparent 60%),
+        radial-gradient(circle at 20% 80%, rgba(16, 185, 129, 0.03) 0%, transparent 60%);
+      border-bottom: 1px solid var(--border-subtle);
+    }
+
+    .header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      margin-bottom: 1.5rem;
+    }
+
+    .badge-row {
+      display: flex;
+      gap: 0.6rem;
+      align-items: center;
+      margin-bottom: 0.8rem;
+    }
+
+
+
+    .pill {
+      display: inline-block;
+      white-space: nowrap;
+      font-family: var(--font-mono);
+      font-size: 0.72rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      padding: 0.3rem 0.75rem;
+      border-radius: 9999px;
+      border: 1px solid transparent;
+    }
+
+    .pill-cyan {
+      color: var(--accent);
+      background: var(--accent-glow);
+      border-color: rgba(56, 189, 248, 0.3);
+    }
+
+    .pill-emerald {
+      color: var(--emerald);
+      background: var(--emerald-glow);
+      border-color: rgba(16, 185, 129, 0.3);
+    }
+
+    .pill-amber {
+      color: var(--amber);
+      background: rgba(245, 158, 11, 0.15);
+      border-color: rgba(245, 158, 11, 0.3);
+    }
+
+    h1 {
+      font-size: 3.2rem;
+      font-weight: 800;
+      letter-spacing: -0.03em;
+      line-height: 1.1;
+      background: linear-gradient(135deg, #ffffff 40%, #94a3b8 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    h2 {
+      font-size: 2.1rem;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+      line-height: 1.2;
+      color: #ffffff;
+    }
+
+    .subtitle {
+      font-size: 1.15rem;
+      color: var(--text-muted);
+      margin-top: 0.4rem;
+      max-width: 850px;
+      line-height: 1.5;
+    }
+
+    .grid-2 {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 1.75rem;
+      margin: 1.25rem 0;
+    }
+
+    .grid-3 {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 1.5rem;
+      margin: 1.25rem 0;
+    }
+
+    .grid-4 {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 1.25rem;
+      margin: 1.25rem 0;
+    }
+
+    .card {
+      background: var(--card-bg);
+      border: 1px solid var(--border-subtle);
+      border-radius: 12px;
+      padding: 1.6rem;
+      backdrop-filter: blur(12px);
+      transition: all 0.2s ease;
+    }
+
+    .card:hover {
+      border-color: var(--border);
+      background: var(--card-hover);
+    }
+
+    .card.highlight {
+      border-color: rgba(56, 189, 248, 0.35);
+      background: linear-gradient(180deg, rgba(56, 189, 248, 0.08) 0%, rgba(17, 24, 39, 0.7) 100%);
+    }
+
+    .card-label {
+      font-family: var(--font-mono);
+      font-size: 0.75rem;
+      font-weight: 600;
+      color: var(--accent);
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      margin-bottom: 0.6rem;
+    }
+
+    .stat-hero {
+      font-size: 2.8rem;
+      font-weight: 800;
+      letter-spacing: -0.03em;
+      color: #ffffff;
+      line-height: 1;
+      margin-bottom: 0.4rem;
+      font-family: var(--font-mono);
+    }
+
+    .stat-hero.cyan {
+      color: var(--accent);
+    }
+
+    .stat-hero.emerald {
+      color: var(--emerald);
+    }
+
+    .stat-hero.amber {
+      color: var(--amber);
+    }
+
+    .stat-desc {
+      font-size: 0.9rem;
+      color: var(--text-muted);
+      line-height: 1.4;
+    }
+
+    p.body-lead {
+      font-size: 1.05rem;
+      line-height: 1.6;
+      color: #cbd5e1;
+      margin-bottom: 1rem;
+    }
+
+    ul.story-list {
+      list-style: none;
+      display: flex;
+      flex-direction: column;
+      gap: 0.85rem;
+    }
+
+    ul.story-list li {
+      position: relative;
+      padding-left: 1.5rem;
+      font-size: 0.95rem;
+      line-height: 1.5;
+      color: #cbd5e1;
+    }
+
+    ul.story-list li::before {
+      content: "";
+      position: absolute;
+      left: 0;
+      top: 0.55rem;
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: var(--accent);
+      box-shadow: 0 0 8px var(--accent);
+    }
+
+    strong {
+      color: #ffffff;
+      font-weight: 600;
+    }
+
+    .code-box {
+      background: #030712;
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 8px;
+      padding: 1.1rem 1.4rem;
+      font-family: var(--font-mono);
+      font-size: 0.82rem;
+      line-height: 1.5;
+      color: #93c5fd;
+      overflow-x: auto;
+      margin: 0.8rem 0;
+    }
+
+    table.data-table {
+      width: 100%;
+      border-collapse: separate;
+      border-spacing: 0;
+      font-size: 0.9rem;
+      margin: 1rem 0;
+      border: 1px solid var(--border-subtle);
+      border-radius: 10px;
+      overflow: hidden;
+      background: var(--card-bg);
+    }
+
+    table.data-table th {
+      background: rgba(31, 41, 55, 0.8);
+      color: var(--accent);
+      text-align: left;
+      padding: 0.85rem 1.2rem;
+      font-family: var(--font-mono);
+      font-size: 0.78rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      border-bottom: 1px solid var(--border-subtle);
+    }
+
+    table.data-table td {
+      padding: 0.85rem 1.2rem;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+      color: #cbd5e1;
+      line-height: 1.4;
+    }
+
+    table.data-table tr:last-child td {
+      border-bottom: none;
+    }
+
+    .presenter-card {
+      background: rgba(15, 23, 42, 0.6);
+      border-left: 3px solid var(--accent);
+      border-radius: 0 8px 8px 0;
+      padding: 0.9rem 1.4rem;
+      margin-top: 1.25rem;
+      font-size: 0.88rem;
+      color: #94a3b8;
+      line-height: 1.5;
+    }
+
+    .presenter-title {
+      font-family: var(--font-mono);
+      font-size: 0.72rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      color: var(--accent);
+      margin-bottom: 0.3rem;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+
+    .footer {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-family: var(--font-mono);
+      font-size: 0.75rem;
+      color: #475569;
+      border-top: 1px solid var(--border-subtle);
+      padding-top: 1rem;
+      margin-top: 1rem;
+    }
+
+    .nav-widget {
+      position: fixed;
+      bottom: 1.5rem;
+      right: 2rem;
+      background: rgba(15, 23, 42, 0.85);
+      border: 1px solid var(--border);
+      border-radius: 30px;
+      padding: 0.5rem 1rem;
+      display: flex;
+      gap: 0.75rem;
+      align-items: center;
+      font-family: var(--font-mono);
+      font-size: 0.75rem;
+      color: var(--text-muted);
+      backdrop-filter: blur(10px);
+      z-index: 999;
+    }
+
+    .key-hint {
+      background: #1e293b;
+      padding: 0.15rem 0.4rem;
+      border-radius: 4px;
+      color: var(--accent);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+    }
+
+    table.data-table th:nth-child(3),
+    table.data-table td:nth-child(3) {
+      white-space: nowrap;
+      width: 1%;
+    }
+  </style>
+</head>
+
+<body>
+
+  <div class="nav-widget">
+    <span>Navigate:</span>
+    <span class="key-hint">↑</span>
+    <span class="key-hint">↓</span>
+    <span>or Scroll</span>
+  </div>
+
+  <!-- SLIDE 1: VISION & MANDATE -->
+  <section class="slide" id="slide-1">
+    <div>
+      <div class="header">
+        <div>
+          <div class="badge-row">
+            <span class="pill pill-emerald">100% Open Source (Apache 2.0)</span>
+            <span class="pill pill-cyan">Tiny Innovation Group Ltd</span>
+            <span class="pill pill-amber">TRL 4 Flat-Sat Bench Target</span>
+
+          </div>
+          <h1>VOID PROTOCOL v2.1</h1>
+          <p class="subtitle">Autonomous, trustless Machine-to-Machine (M2M) settlement for Lower Earth Orbit (LEO),
+            air-gapped, and disrupted edge assets.</p>
+        </div>
+      </div>
+
+      <div class="grid-4">
+        <div class="card highlight">
+          <div class="card-label">Signed Payment Frame</div>
+          <div class="stat-hero cyan">192 Bytes</div>
+          <div class="stat-desc">Complete Ed25519 payment intent packed well under the 255-byte Long Range (LoRa) radio
+            hardware ceiling.
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-label">Execution Invariant</div>
+          <div class="stat-hero emerald">0 Heap</div>
+          <div class="stat-desc">No dynamic allocation (<code>malloc</code>/<code>new</code> banned); mathematical
+            immunity to runtime fragmentation.</div>
+        </div>
+        <div class="card highlight">
+          <div class="card-label">Hardware Unit Cost</div>
+          <div class="stat-hero cyan">£20</div>
+          <div class="stat-desc">Off-the-shelf Heltec V3 (ESP32-S3 + SX1262 LoRa) delivers hardware-signing nodes at
+            consumer pricing.</div>
+        </div>
+
+        <div class="card ">
+          <div class="card-label">Current Maturity Gate</div>
+          <div class="stat-hero amber">TRL 4</div>
+          <div class="stat-desc">Flat-sat hardware integration verified on bench; HAB stratospheric flight target
+            horizon (TBC).</div>
+        </div>
+      </div>
+      <p class="body-lead" style="margin-top: 1rem;">
+        <strong>The Reality:</strong> Orbit is moving from passive observation to an active commercial economy—orbital
+        fuel depots, private stations, and cross-linked constellations. But machines in space have no way to pay each
+        other. Void Protocol is the lightweight financial backbone for orbit: enabling autonomous spacecraft and edge
+        devices to settle fuel, bandwidth, and compute machine-to-machine using stable, dollar-pegged assets.
+      </p>
+
+    </div>
+
+    <div class="presenter-card">
+      <div class="presenter-title">Presenter Perspective</div>
+      "Think about where space is going over the next decade: commercial stations, orbital refueling depots, and
+      thousands of interconnected satellites. When an autonomous craft docks at a fuel depot, or when a satellite runs
+      low on downlink capacity and needs to buy bandwidth from the bird passing next to it, how do they settle? There is
+      no browser, no Stripe checkout, and no human swiping a card. Void Protocol is the financial backbone for that
+      machine economy—allowing edge silicon to trade services and settle in stable currency automatically on the wire."
+    </div>
+
+
+
+    <div class="footer">
+      <span>Void Protocol Architecture Briefing</span>
+      <span>Slide 01 / 09</span>
+    </div>
+  </section>
+
+  <!-- SLIDE 2: THE WEDGE & MARKET FAILURE -->
+  <section class="slide" id="slide-2">
+
+    <div>
+      <div class="header">
+        <div>
+          <div class="badge-row">
+            <span class="pill pill-cyan">Open Source Plumbing</span>
+            <span class="pill pill-amber">The Physical Problem</span>
+          </div>
+          <h2>Why Normal Tech Doesn't Work in Orbit</h2>
+          <p class="subtitle">You can't open a browser, swipe a card, or run regular crypto over a 5-minute radio pass.
+          </p>
+        </div>
+      </div>
+
+      <div class="grid-2">
+        <div class="card">
+          <div class="card-label">What Breaks on the Wire</div>
+          <ul class="story-list">
+            <li><strong>No Persistent Internet:</strong> Orbital passes last roughly 5 to 8 minutes over ~1 kbps links.
+              There is no continuous connection to hold open a socket or query a balance.</li>
+            <li><strong>The Wire Format Problem:</strong> Everyday Web3 wallets, JSON-RPC calls (300 B – 1.5 KB), and
+              even Protobuf schemas (112 B – 725 B) carry too much baggage for a single burst—quickly blowing past a
+              LoRa radio's 255-byte frame ceiling and forcing messy packet fragmentation.</li>
+            <li><strong>Flight Computers Can't Crash:</strong> Running heavy language runtimes on bare-metal hardware
+              introduces heap fragmentation and unrecoverable freeze-ups[cite: 1].</li>
+            <li><strong>No Two-Way Handshakes:</strong> By the time a standard multi-round payment handshake negotiates,
+              the satellite has already passed over the horizon[cite: 1].</li>
+          </ul>
+        </div>
+        <div class="card highlight">
+          <div class="card-label">What This Actually Enables</div>
+          <ul class="story-list">
+            <li><strong>Autonomous Refueling:</strong> A craft docks at an orbital propellant depot, settles the fuel
+              bill automatically, and undocks without human intervention.</li>
+            <li><strong>Buying Relay Bandwidth:</strong> Sat A has data to downlink but no ground pass; Sat B has
+              line-of-sight. Sat A pays Sat B micro-cents to relay the packets down[cite: 1].</li>
+            <li><strong>Offloading Edge Compute:</strong> Remote sensors and small satellites can sell telemetry or buy
+              compute from adjacent nodes on the fly[cite: 1].</li>
+            <li><strong>A 192-Byte Receipt:</strong> Strip away all web bloat so an entire signed payment intent
+              transmits in a single sub-second radio burst[cite: 1].</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+
+
+    <div class="presenter-card">
+      <div class="presenter-title">Presenter Perspective</div>
+      "Think of a Tesla pulling up to a charger and paying automatically without you ever touching an app.
+      That's what's missing in space. When private stations, fuel depots, and satellite swarms go up, machines will need
+      to buy fuel, compute, or bandwidth off each other.
+      There's no human up there tapping a card, and regular internet doesn't work. Void is just the card reader for
+      machines: they shake hands over radio, settle in digital dollars, and get on with their job."
+    </div>
+
+    <div class="footer">
+      <span>Problem Identification</span>
+      <span>Slide 02 / 09</span>
+    </div>
+  </section>
+
+
+  <!-- SLIDE 3: WHY NOW -->
+  <section class="slide" id="slide-3">
+    <div>
+      <div class="header">
+        <div>
+          <div class="badge-row">
+            <span class="pill pill-emerald">Market Timing</span>
+            <span class="pill pill-cyan">The 10-Year Shift</span>
+          </div>
+          <h2>Why now and not 10 year ago?</h2>
+          <p class="subtitle">A decade ago, the chips lacked hardware crypto, fees killed micro-payments, and you had to
+            own a satellite dish.</p>
+        </div>
+      </div>
+
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th>Core Vector</th>
+            <th>10 Years Ago (~2016)</th>
+            <th>What We Have Today</th>
+            <th>Why It Matters for Void</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><strong>£20 Hardware Cost</strong></td>
+            <td>CubeSats were not yet the industry standard for LEO (pre-2017); building a satellite node required an
+              institutional aerospace budget.</td>
+            <td>CubeSats are the norm, and an off-the-shelf £20 Heltec V3 board gives you the radio and compute to build
+              a working
+              node at home.</td>
+            <td>The barrier to entry collapsed from tens of thousands of pounds in a specialized lab down to pocket
+              money on your
+              desk.</td>
+          </tr>
+          <tr>
+            <td><strong>Sub-Penny Settlement</strong></td>
+            <td>Smart contract networks were early, expensive, and slow; paying a few pence for data had £5–£20 in fees.
+            </td>
+            <td>L2 rollups (Base, Arbitrum) offer deterministic finality for fractions of a penny.</td>
+            <td>Machines can pay 5p to buy fuel or relay a sensor burst without fees eating the payment.</td>
+          </tr>
+          <tr>
+            <td><strong>Crowdsourced Ground Mesh</strong></td>
+            <td>Downlinks required building your own tracking antennas or renting expensive dish arrays.</td>
+            <td>TinyGS operates thousands of community-run LoRa receiving stations globally.</td>
+            <td>Instant, global telemetry ingest from day one without paying for ground infrastructure.</td>
+          </tr>
+          <tr>
+            <td><strong>Access to Orbit</strong></td>
+            <td>Space was a closed club: sparse government birds, launches cost millions, and it wasn't on anyone's
+              radar.</td>
+            <td>Commercial rideshares put space on everyone's table: you can build and launch a CubeSat today for ~£20k.
+            </td>
+            <td>When anyone can afford to launch hardware into orbit, you need an open-source payment rail anyone can
+              plug into.
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="presenter-card">
+      <div class="presenter-title">Presenter Perspective</div>
+      "Ten years ago, space was a rich government club. Launches cost millions, hardware was locked down in aerospace
+      labs,
+      and nobody was talking about orbital commerce. Today, space is on everyone's table. Commercial rideshares mean you
+      can
+      build and launch a CubeSat for about ten grand, and a £20 Heltec board handles the radio and compute. The barrier
+      to
+      getting tech into orbit has completely collapsed—which means we need an open-source payment layer that matches
+      that
+      reality."
+    </div>
+
+    <div class="footer">
+      <span>Context & Market Timing</span>
+      <span>Slide 03 / 09</span>
+    </div>
+  </section>
+
+  <!-- SLIDE 4: ARCHITECTURE & TRANSACTION LOOP -->
+  <section class="slide" id="slide-4">
+    <style>
+      .lifecycle-grid {
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 1.25rem;
+        margin: 1.2rem 0;
+      }
+
+      .lifecycle-card {
+        background: var(--card-bg);
+        border: 1px solid var(--border-subtle);
+        border-radius: 10px;
+        padding: 1.3rem;
+        display: flex;
+        flex-direction: column;
+        justify-content: space-between;
+        position: relative;
+        backdrop-filter: blur(12px);
+      }
+
+      .lifecycle-card.step-deal {
+        border-top: 3px solid var(--accent);
+      }
+
+      .lifecycle-card.step-settle {
+        border-top: 3px solid var(--emerald);
+      }
+
+      .lifecycle-card.step-relay {
+        border-top: 3px solid var(--amber);
+      }
+
+      .lifecycle-card.step-receipt {
+        border-top: 3px solid #a855f7;
+      }
+
+      .card-step-tag {
+        font-family: var(--font-mono);
+        font-size: 0.7rem;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        margin-bottom: 0.5rem;
+      }
+
+      .step-deal .card-step-tag {
+        color: var(--accent);
+      }
+
+      .step-settle .card-step-tag {
+        color: var(--emerald);
+      }
+
+      .step-relay .card-step-tag {
+        color: var(--amber);
+      }
+
+      .step-receipt .card-step-tag {
+        color: #c084fc;
+      }
+
+      .step-title {
+        font-size: 1.1rem;
+        font-weight: 700;
+        color: #ffffff;
+        margin-bottom: 0.4rem;
+      }
+
+      .step-pill {
+        display: inline-block;
+        font-family: var(--font-mono);
+        font-size: 0.75rem;
+        background: #030712;
+        border: 1px solid var(--border-subtle);
+        padding: 0.2rem 0.5rem;
+        border-radius: 4px;
+        margin-bottom: 0.75rem;
+        color: #93c5fd;
+      }
+
+      .step-desc {
+        font-size: 0.88rem;
+        color: #cbd5e1;
+        line-height: 1.45;
+      }
+
+      .step-meta {
+        margin-top: 0.8rem;
+        padding-top: 0.6rem;
+        border-top: 1px solid rgba(255, 255, 255, 0.06);
+        font-family: var(--font-mono);
+        font-size: 0.72rem;
+        color: #64748b;
+      }
+
+      .timebox-bar {
+        background: rgba(15, 23, 42, 0.7);
+        border: 1px solid var(--border-subtle);
+        border-radius: 8px;
+        padding: 0.75rem 1.2rem;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        font-size: 0.85rem;
+        margin-top: 0.5rem;
+      }
+    </style>
+
+    <div>
+      <div class="header">
+        <div>
+          <div class="badge-row">
+            <span class="pill pill-cyan">Architecture Overview</span>
+            <span class="pill pill-emerald">60s Critical Path</span>
+            <span class="pill pill-amber">Store & Forward</span>
+          </div>
+          <h2>The End-to-End In-Orbit Settlement Loop</h2>
+          <p class="subtitle">How two Satellites negotiate, verify via ground gateway, and release resources in under 60
+            seconds.</p>
+        </div>
+      </div>
+
+      <!-- 4-STEP OPERATIONAL FLOW -->
+      <div class="lifecycle-grid">
+        <!-- 1. THE DEAL -->
+        <div class="lifecycle-card step-deal">
+          <div>
+            <div class="card-step-tag">Phase 3: The Deal</div>
+            <div class="step-title">In-Orbit Invoice</div>
+            <div class="step-pill">Packet A ➔ Packet B</div>
+            <p class="step-desc">
+              Sat A broadcasts an invoice over radio. Sat B evaluates terms, wraps the payment intent with its
+              millisecond
+              timestamp, and signs it with its hardware identity key.
+            </p>
+          </div>
+          <div class="step-meta">Segment: Space-to-Space (RF)</div>
+        </div>
+
+        <!-- 2. SETTLEMENT -->
+        <div class="lifecycle-card step-settle">
+          <div>
+            <div class="card-step-tag">Phase 4: Settlement</div>
+            <div class="step-title">Ground Execution</div>
+            <div class="step-pill">Packet B ➔ L2 Escrow</div>
+            <p class="step-desc">
+              Sat B downlinks Packet B. The Ground Bouncer verifies the cryptographic signature on bare metal, and the
+              Go
+              Gateway settles the escrow batch on Base L2.
+            </p>
+          </div>
+          <div class="step-meta">Segment: Downlink to Gateway</div>
+        </div>
+
+        <!-- 3. THE RELAY & UNLOCK -->
+        <div class="lifecycle-card step-relay">
+          <div>
+            <div class="card-step-tag">Phases 5–6: The Relay</div>
+            <div class="step-title">The Encrypted Unlock</div>
+            <div class="step-pill">Packet ACK ➔ Tunnel Data</div>
+            <p class="step-desc">
+              The station uplinks an ACK with signed Tunnel Data. Sat B relays it to Sat A across the mesh. Sat A
+              validates the ground signature and opens the fuel or data valve.
+            </p>
+          </div>
+          <div class="step-meta">Segment: Uplink & Inter-Sat Relay</div>
+        </div>
+
+        <!-- 4. THE RECEIPT -->
+        <div class="lifecycle-card step-receipt">
+          <div>
+            <div class="card-step-tag">Phase 7: Receipt Close</div>
+            <div class="step-title">Proof of Delivery</div>
+            <div class="step-pill">Packet C ➔ Packet D</div>
+            <p class="step-desc">
+              Sat A signs Packet C (Proof of Execution). Sat B wraps it into Packet D, downlinks it to ground, and the
+              gateway marks the escrow contract as completed.
+            </p>
+          </div>
+          <div class="step-meta">Segment: Loop Finalization</div>
+        </div>
+      </div>
+
+      <!-- OPERATIONAL TIMEBOX RIBBON -->
+      <div class="timebox-bar">
+        <span><strong>Pre-Flight:</strong> Master keys loaded via PUF / 86-char passphrase.</span>
+        <span><strong>Pass Acquisition (AOS):</strong> Ephemeral X25519 Handshake (Packet H, 112B).</span>
+        <span><strong>Failsafe:</strong> Dead Man's Switch trips if timeout exceeds 120% relay window.</span>
+      </div>
+    </div>
+
+    <div class="presenter-card">
+      <div class="presenter-title">Presenter Perspective</div>
+      "Here is how a real transaction plays out across space and ground: Sat A offers a service invoice over radio. Sat
+      B
+      agrees, signs a payment frame with its hardware key, and drops it down to Earth. Our ground station validates the
+      signature on bare metal, fires the settlement into our Base L2 escrow contract, and shoots an encrypted unlock
+      back
+      up. Sat B relays that unlock across orbit to Sat A, the fuel valve opens, and Sat A signs a receipt that closes
+      the
+      loop. The entire critical path runs in under 60 seconds."
+    </div>
+
+    <div class="footer">
+      <span>Lifecycle & Operational Loop</span>
+      <span>Slide 04 / 10</span>
+    </div>
+  </section>
+
+  <!-- SLIDE 5: WIRE SPEC & DUAL-TIER FRAMING -->
+  <section class="slide" id="slide-5">
+    <div>
+      <div class="header">
+        <div>
+          <div class="badge-row">
+            <span class="pill pill-cyan">Binary Architecture</span>
+            <span class="pill pill-emerald">Rule of 8 Alignment</span>
+            <span class="pill pill-amber">Zero Copy</span>
+          </div>
+          <h2>Wire Specification: Dual-Tier Systems Framing</h2>
+          <p class="subtitle">A unified memory layout that bridges institutional space bands (CCSDS — Consultative
+            Committee for
+            Space Data Systems) with community SDRs and TinyGS listening stations (SNLP — Space Network Layer Protocol).
+          </p>
+        </div>
+      </div>
+
+      <!-- PACKET WIRE MATRIX -->
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th>Packet Type</th>
+            <th>Operational Role</th>
+            <th>Enterprise Tier (CCSDS)</th>
+            <th>Community Tier (SNLP)</th>
+            <th>Cryptographic Enforcement</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><strong>Packet A</strong></td>
+            <td>Service Invoice (Seller)</td>
+            <td><strong>72 Bytes</strong> (6B Hdr + 66B Body)</td>
+            <td><strong>80 Bytes</strong> (14B Hdr + 66B Body)</td>
+            <td>Unsigned cleartext; CRC32 validated</td>
+          </tr>
+          <tr>
+            <td><strong>Packet B</strong></td>
+            <td>Signed Payment Intent</td>
+            <td><strong>184 Bytes</strong></td>
+            <td><strong>192 Bytes</strong> </td>
+            <td>Ed25519 signature + deterministic ChaCha20</td>
+          </tr>
+          <tr>
+            <td><strong>Packet ACK</strong></td>
+            <td>Unlock Command & Relay</td>
+            <td><strong>120 Bytes</strong> (embeds 88B encrypted unlock for Sat A)</td>
+            <td><strong>136 Bytes</strong> (embeds 96B encrypted unlock for Sat A)</td>
+            <td>CRC32 pre-gate + anti-collision tag (<code>0xAC</code>)</td>
+          </tr>
+          <tr>
+            <td><strong>Packet C / D</strong></td>
+            <td>Execution Receipt & Downlink</td>
+            <td><strong>104B</strong> (C) / <strong>128B</strong> (D)</td>
+            <td><strong>104B</strong> (C) / <strong>136B</strong> (D)</td>
+            <td>Sat A PUF signature; Magic (<code>0xD0</code>)</td>
+          </tr>
+          <tr>
+            <td><strong>Packet H / Beat</strong></td>
+            <td>Handshake & System Health</td>
+            <td><strong>112 Bytes</strong> (Packet H)</td>
+            <td><strong>34-Byte Body</strong> (Heartbeat)</td>
+            <td>X25519 ECDH Ephemeral Key Exchange</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <!-- ARCHITECTURAL MOATS -->
+      <div class="grid-3" style="margin-top: 1rem;">
+        <div class="card">
+          <div class="card-label">1. Mod-8 Header Congruence</div>
+          <p class="stat-desc">
+            The 14-byte SNLP header matches the 6-byte CCSDS header modulo 8 (<code>14 ≡ 6 mod 8</code>). Both tiers
+            share
+            the <strong>exact same body struct</strong> with zero runtime branching and native 64-bit alignment.
+          </p>
+        </div>
+        <div class="card highlight">
+          <div class="card-label">2. Collision Proofing (Hamming 4)</div>
+          <p class="stat-desc">
+            Packet ACK (<code>0xAC</code>) and Delivery D (<code>0xD0</code>) share identical 122-byte body lengths. A
+            1-byte magic discriminant with Hamming distance 4 ensures no single-bit RF error can cause misrouting.
+          </p>
+        </div>
+        <div class="card">
+          <div class="card-label">3. Zero-Wire Deterministic Nonce</div>
+          <p class="stat-desc">
+            ChaCha20 nonces are derived as <code>sat_id || epoch_ts</code>. Eliminates 12 bytes of wire bloat, removes
+            RNG
+            latency, and makes nonce reuse mathematically impossible over monotonic clocks.
+          </p>
+        </div>
+      </div>
+    </div>
+
+    <div class="presenter-card">
+      <div class="presenter-title">Presenter Perspective</div>
+      "The reason you see two tiers here is simple: CCSDS connects to licensed commercial satellites, while SNLP adds a
+      software sync word so open-source SDRs, universities, and TinyGS antennas can easily lock onto our packets in
+      noisy
+      LoRa bands. Under the hood, they share the exact same payload structs—the 14-byte SNLP header and 6-byte CCSDS
+      header
+      align on 8-byte boundaries, so our C++ firmware parses both with zero memory copies[cite: 2, 3, 8]. When ground
+      settles an invoice, it returns Packet ACK carrying an encrypted 88-byte unlock parcel that Sat B blindly relays to
+      Sat
+      A. And to make sure cosmic rays or radio noise can't scramble packet types, we use distinct magic bytes so a
+      single
+      bit-flip can never mistake a delivery receipt for an unlock command[cite: 5, 6]."
+    </div>
+
+    <div class="footer">
+      <span>Wire Specification & Memory Discipline</span>
+      <span>Slide 05 / 10</span>
+    </div>
+  </section>
+
+
+
+  <!-- SLIDE 6: COMMERCIAL MODEL & OPEN CORE -->
+  <section class="slide" id="slide-6">
+    <div>
+      <div class="header">
+        <div>
+          <div class="badge-row">
+            <span class="pill pill-emerald">Commercial Wedge</span>
+            <span class="pill pill-cyan">Open Core</span>
+          </div>
+          <h2>Business Model: "Thick Client, Thin Server"</h2>
+          <p class="subtitle">Optimizing one node is Open Source. Orchestrating thousands of nodes is the Enterprise
+            product.</p>
+        </div>
+      </div>
+
+      <div class="grid-2">
+        <div class="card">
+          <div class="card-label">Community Tier (Apache 2.0 Open Source)</div>
+          <h3 style="color: #fff; margin-bottom: 0.8rem; font-size: 1.2rem;">Adoption & Standard Standardization</h3>
+          <ul class="story-list">
+            <li><strong>SNLP 14-Byte Frame Framing:</strong> Optimized for open ISM bands (433/868/915 MHz).</li>
+            <li><strong>Open SDR & Ground Ingest:</strong> Any community listener (TinyGS, SatNOGS, or basic RTL-SDRs)
+              can detect
+              and ingest frames on ISM bands via our public 32-bit sync word—no proprietary code or custom receiver
+              integrations
+              required.</li>
+            <li><strong>Zero Barrier to Entry:</strong> Free, open-source C++14 firmware client for university small-sat
+              labs, CubeSat builders, and DePIN operators.</li>
+            <li><strong>Venture Purpose:</strong> Establish Void Protocol as the default industry standard for
+              autonomous edge settlement.</li>
+          </ul>
+        </div>
+        <div class="card highlight">
+          <div class="card-label">Commercial & Mission Tier (Proprietary Tooling)</div>
+          <h3 style="color: #38bdf8; margin-bottom: 0.8rem; font-size: 1.2rem;">Fleet Infrastructure & Scale</h3>
+          <ul class="story-list">
+            <li><strong>Standard CCSDS Framing:</strong> Direct 6-byte header compliance for operators on licensed
+              S/X-band
+              downlinks, plugging straight into commercial ground networks (AWS Ground Station, KSAT).</li>
+            <li><strong>Multi-Satellite Ground Ingest:</strong> Scaled bouncers built to handle dozens of concurrent
+              orbital
+              passes across multiple antenna sites at once.</li>
+            <li><strong>Secure Element Provisioning:</strong> Pre-launch key flashing for hardware secure chips
+              (ATECC608/SE050), key rotation, and emergency over-the-air revocation.</li>
+            <li><strong>Enterprise Settlement Pipelines:</strong> High-throughput batching gateways configured for
+              private
+              ledgers, dedicated L2 rollups, and mission-critical uptime.</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+
+    <div class="presenter-card">
+      <div class="presenter-title">Presenter Perspective</div>
+      "We don't need buzzwords to justify charging for software. The device firmware is Apache 2.0 and free forever so
+      that
+      any university team or hobbyist can run it on a £20 board tomorrow. But a commercial constellation flying 50
+      satellites has completely different operational problems: they fly on licensed S-band using CCSDS headers, they
+      need
+      factory provisioning for secure silicon, and their ground servers have to handle dozens of passes
+      simultaneously[cite:
+      2]. That fleet orchestration tooling is what we commercialize."
+    </div>
+
+    <div class="footer">
+      <span>Venture Economics</span>
+      <span>Slide 06 / 09</span>
+    </div>
+  </section>
+
+  <!-- SLIDE 7: BUILD VELOCITY & BENCH TRACTION -->
+  <section class="slide" id="slide-7">
+    <div>
+      <div class="header">
+        <div>
+          <div class="badge-row">
+            <span class="pill pill-emerald">Hardware Traction</span>
+            <span class="pill pill-cyan">Execution Velocity</span>
+          </div>
+          <h2>Live Hardware Verification: Zero Slideware</h2>
+          <p class="subtitle">The protocol is implemented, automated, and proven across real microcontroller hardware.
+          </p>
+        </div>
+      </div>
+
+      <div class="grid-4">
+        <div class="card">
+          <div class="card-label">Go Web3 Gateway</div>
+          <div class="stat-hero cyan">76</div>
+          <div class="stat-desc">Green automated unit, crash-safety, and replay tests.</div>
+        </div>
+        <div class="card">
+          <div class="card-label">C++ Firmware Core</div>
+          <div class="stat-hero emerald">60/60</div>
+          <div class="stat-desc">GoogleTest assertions passing across both SNLP and CCSDS targets.</div>
+        </div>
+        <div class="card">
+          <div class="card-label">Ground Bouncer</div>
+          <div class="stat-hero">41/41</div>
+          <div class="stat-desc">Zero-heap C++ tests confirming Ed25519 validation and HTTP egress.</div>
+        </div>
+        <div class="card">
+          <div class="card-label">Smart Contracts</div>
+          <div class="stat-hero amber">6/6</div>
+          <div class="stat-desc">Foundry tests verifying replay guards and duplicate-nonce reverts.</div>
+        </div>
+      </div>
+
+      <div class="grid-2" style="margin-top: 1rem;">
+        <div class="card">
+          <div class="card-label">First Live Hardware Pass (28-04-2026)</div>
+          <p class="stat-desc" style="font-size: 0.95rem; line-height: 1.5;">
+            Executed the first full hardware loop: 192-byte SNLP Packet B emitted from real Heltec ESP32-S3 hardware
+            &rarr; desktop bouncer Ed25519 verification &rarr; Go gateway ingest &rarr; Anvil block 2 settlement mined
+            &rarr; Packet C receipt persisted.
+          </p>
+        </div>
+        <div class="card highlight">
+          <div class="card-label">Reboot Stress Test Verification (12-06-2026)</div>
+          <p class="stat-desc" style="font-size: 0.95rem; line-height: 1.5;">
+            Conducted 7 consecutive transactions across mid-session gateway reboots and crashes. Verified <strong>zero
+              double-settlements</strong>, clean state reload via append-only JSONL receipts, and flawless recovery on
+            the bench.
+          </p>
+        </div>
+      </div>
+    </div>
+
+    <div class="presenter-card">
+      <div class="presenter-title">Presenter Perspective</div>
+      "This is not a whitepaper or slideware. We have 183 automated tests pinning down every single byte of the wire
+      specification. More importantly, we have live silicon proof: on the bench, we've repeatedly executed full
+      autonomous loops over radio, crashed the gateway intentionally mid-flight, and proved zero double-settles and
+      complete state recovery."
+    </div>
+
+    <div class="footer">
+      <span>Validation Record</span>
+      <span>Slide 07 / 09</span>
+    </div>
+  </section>
+  <!-- SLIDE: LIVE BENCH DEMO -->
+  <section class="slide" id="slide-demo">
+    <div>
+      <div class="header">
+        <div>
+          <div class="badge-row">
+            <span class="pill pill-cyan">Bench Validation</span>
+            <span class="pill pill-emerald">Real Silicon (Heltec SX1262)</span>
+            <span class="pill pill-amber">Uncut Pass</span>
+          </div>
+          <h2>Live Bench Execution: The Flat-Sat Commerce Pass</h2>
+          <p class="subtitle">An unedited recording of the full 6-leg transaction loop executing across physical LoRa
+            hardware, the Go gateway, and the local settlement contract.</p>
+        </div>
+      </div>
+
+      <div class="grid-2" style="grid-template-columns: 1.6fr 1fr; gap: 1.5rem; align-items: start; margin-top: 1rem;">
+        <!-- VIDEO PLAYER CONTAINER -->
+        <div class="card"
+          style="padding: 0.5rem; background: rgba(15, 23, 42, 0.8); border-color: rgba(56, 189, 248, 0.3);">
+          <div
+            style="position: relative; width: 100%; aspect-ratio: 16 / 9; border-radius: 6px; overflow: hidden; background: #000;">
+            <video id="flat-sat-demo-video" src="./public/Sat_capture.mp4"
+              poster="./assets/imgui_console_poster.png" controls muted playsinline loop
+              style="width: 100%; height: 100%; object-fit: contain; display: block;">
+            </video>
+            <div
+              style="position: absolute; top: 10px; left: 10px; background: rgba(0,0,0,0.7); padding: 2px 8px; border-radius: 4px; font-family: var(--font-mono); font-size: 0.65rem; color: var(--emerald); border: 1px solid rgba(16, 185, 129, 0.4);">
+              ● REC · 10/10 BENCH PASS
+            </div>
+          </div>
+          <div
+            style="display: flex; justify-content: space-between; align-items: center; padding: 0.5rem 0.25rem 0.25rem; font-family: var(--font-mono); font-size: 0.72rem; color: var(--text-muted);">
+            <span>Console: Dear ImGui Operator Station (VOID-142)[cite: 1]</span>
+            <span>Target: Heltec S3 + SX1262</span>
+          </div>
+        </div>
+
+        <!-- TELEMETRY LEG TRACKER -->
+        <div class="card">
+          <div class="card-label">Observed Transaction Sequence</div>
+          <ul class="story-list" style="margin-top: 0.5rem; font-size: 0.88rem;">
+            <li><strong>1. Packet A (Invoice):</strong> Seller Heltec emits cleartext service offer over LoRa[cite: 1].
+            </li>
+            <li><strong>2. Packet B (Payment):</strong> Buyer signs 192 B payment intent with Ed25519[cite: 1].</li>
+            <li><strong>3. Packet ACK:</strong> Ground bouncer validates signature and returns LoRa ACK[cite: 1].</li>
+            <li><strong>4. On-Chain Settlement:</strong> Gateway submits batch to local contract; tx mined[cite: 1].
+            </li>
+            <li><strong>5. Packet C & Audit Log:</strong> Ground generates signed receipt; appends to
+              <code>receipts.json</code>[cite: 1].
+            </li>
+            <li><strong>6. Packet D (Delivery):</strong> Seller Heltec receives receipt, flips OLED to UNLOCKED, and
+              releases data[cite: 1].</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+
+    <div class="presenter-card">
+      <div class="presenter-title">Presenter Perspective</div>
+      "Instead of showing static architecture diagrams, here is the protocol executing on physical silicon on our
+      desk[cite: 1]. On the screen you see our Dear ImGui console tracking the live state machine[cite: 1]. The seller
+      advertises, the buyer signs and downlinks the 192-byte payment frame, the gateway mines the transaction on-chain,
+      and an immutable record appends to receipts.json before Packet D triggers the final unlock[cite: 1]. What you are
+      looking at is our core TRL 4 milestone: 10 back-to-back hardware passes with zero double-settles and no dropped
+      state[cite: 1]."
+    </div>
+
+    <div class="footer">
+      <span>Hardware Qualification</span>
+      <span>Slide 08 / 11</span>
+    </div>
+  </section>
+  <!-- SLIDE 8: THE TRL 4 MILESTONE & OUTREACH UNLOCK -->
+  <section class="slide" id="slide-8">
+    <div>
+      <div class="header">
+        <div>
+          <div class="badge-row">
+            <span class="pill pill-amber">Immediate Target</span>
+            <span class="pill pill-emerald">TRL 4 Verification</span>
+            <span class="pill pill-cyan">Outreach Unlock</span>
+          </div>
+          <h2>The Immediate Milestone: The TRL 4 Evidence Pack</h2>
+          <p class="subtitle">Focusing bench execution on one tangible goal: a recorded 10-for-10 hardware run that
+            proves
+            the protocol works and unlocks outreach for seed funding[cite: 10].</p>
+        </div>
+      </div>
+
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th>Active Workstream</th>
+            <th>What Is Being Built</th>
+            <th>Target State</th>
+            <th>Why It Matters for Outreach</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><strong>VOID-142</strong><br><span
+                style="font-family: var(--font-mono); font-size: 0.72rem; color: var(--text-muted);">Operator
+                Console</span></td>
+            <td>Live wiring for the Dear ImGui host dashboard: gateway telemetry, blockchain event logs, and persistent
+              receipts drawer[cite: 10].</td>
+            <td><span class="pill pill-cyan" style="font-size: 0.65rem;">In Progress</span></td>
+            <td>Provides the visual observation deck needed for a clean screen recording so investors and non-technical
+              partners can watch the settlement happen live[cite: 10].</td>
+          </tr>
+          <tr>
+            <td><strong>VOID-022</strong><br><span
+                style="font-family: var(--font-mono); font-size: 0.72rem; color: var(--text-muted);">Edge
+                Beaconing</span>
+            </td>
+            <td>Periodic LoRa heartbeat emission for real-time link quality, battery voltage, and satellite status[cite:
+              6, 10].</td>
+            <td><span class="pill pill-emerald" style="font-size: 0.65rem;">Bench Confirm</span></td>
+            <td>Proves telemetry tracking and health monitoring run concurrently without disrupting active settlement
+              passes[cite: 10].</td>
+          </tr>
+          <tr>
+            <td><strong>VOID-130</strong><br><span
+                style="font-family: var(--font-mono); font-size: 0.72rem; color: var(--text-muted);">The TRL 4
+                Gate</span>
+            </td>
+            <td>The formal flat-sat qualification: 10 consecutive end-to-end passes on real Heltec silicon, 1
+              cryptographic tamper rejection, and gateway crash-recovery[cite: 10].</td>
+            <td><span class="pill pill-amber" style="font-size: 0.65rem;">Next Milestone</span></td>
+            <td>Produces the unedited video artifact and immutable receipt log (<code>receipts.json</code>) required to
+              begin reaching out to commercial partners and institutional capital[cite: 10].</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <div class="card"
+        style="margin-top: 1rem; border-color: rgba(16, 185, 129, 0.3); background: rgba(16, 185, 129, 0.05);">
+        <p class="stat-desc" style="color: #cbd5e1; font-size: 0.92rem;">
+          <strong style="color: var(--emerald);">The Outreach Trigger:</strong> We do not pitch on slideware[cite: 10].
+          Locking the TRL 4 video proof and verified receipt logs directly unlocks technical outreach to our first
+          integration targets: <strong>TinyGS</strong> ground operators, the <strong>Cambridge Rocketry
+            Society</strong>,
+          and active builders like <strong>HelioCubeSat</strong>[cite: 10].
+        </p>
+      </div>
+    </div>
+
+    <div class="presenter-card">
+      <div class="presenter-title">Presenter Perspective</div>
+      "Everything on the bench right now leads to one tangible deliverable: the TRL 4 Evidence Pack[cite: 10]. We're
+      wiring up the ImGui console so we have an unedited screen recording of the full loop, and confirming our LoRa
+      telemetry heartbeats[cite: 10]. As soon as VOID-130 is green with 10 consecutive passes and zero double-settles,
+      we
+      don't just sit on it[cite: 10]. That evidence pack is what we take directly to our initial target
+      partners—approaching TinyGS for community ground ingest, Cambridge Rocketry Society for flight collaboration, and
+      teams like HelioCubeSat to prove we can run on their CubeSat buses[cite: 10]. From there, institutional capital
+      and
+      wider seed conversations follow real silicon proof[cite: 10]."
+    </div>
+
+    <div class="footer">
+      <span>Operational Roadmap</span>
+      <span>Slide 08 / 10</span>
+    </div>
+  </section>
+  <!-- SLIDE 9: FLIGHT ROADMAP -->
+  <section class="slide" id="slide-9">
+    <div>
+      <div class="header">
+        <div>
+          <div class="badge-row">
+            <span class="pill pill-emerald">The Flight Path</span>
+            <span class="pill pill-cyan">Phase B Runway</span>
+            <span class="pill pill-amber">Target Launch Horizon</span>
+          </div>
+          <h2>The Horizon: Stratospheric Flight Validation</h2>
+          <p class="subtitle">The structured roadmap transitioning Void Protocol from bench qualification into an
+            in-flight, proven protocol.</p>
+        </div>
+      </div>
+
+      <div class="grid-3">
+        <!-- PHASE A -->
+        <div class="card">
+          <div class="card-label">Phase A: Flat-Sat Gate (Immediate)</div>
+          <ul class="story-list">
+            <li><strong>TRL 4 Evidence Pack:</strong> 10 consecutive automated transactions over LoRa on Heltec
+              hardware.
+            </li>
+            <li><strong>Tamper & Crash Safety:</strong> Proven cryptographic rejection of corrupt frames and clean
+              gateway
+              recovery.</li>
+            <li><strong>Visual Audit Log:</strong> Dear ImGui console recording paired with immutable
+              <code>receipts.json</code>[cite: 10].
+            </li>
+          </ul>
+        </div>
+
+        <!-- PHASE B -->
+        <div class="card highlight">
+          <div class="card-label">Phase B: Outreach & Planning Runway</div>
+          <ul class="story-list">
+            <li><strong>Partner Outreach:</strong> Engage TinyGS (ground ingest), Cambridge Rocketry Society, and
+              HelioCubeSat[cite: 10].</li>
+            <li><strong>Testnet Promotion:</strong> Deploy contracts to Base Sepolia and validate open-mesh ingestion
+              (VOID-053)[cite: 10].</li>
+            <li><strong>Regulatory Clearance:</strong> File UK Civil Aviation Authority (CAA) NOTAM and lock frequency
+              budget (VOID-090/012)[cite: 10].</li>
+          </ul>
+        </div>
+
+        <!-- PHASES C-E -->
+        <div class="card">
+          <div class="card-label">Phases C–E: HAB Flight Campaign</div>
+          <ul class="story-list">
+            <li><strong>Environmental Soak:</strong> -30°C thermal vacuum testing and 20 km line-of-sight RF range
+              checks
+              (VOID-080/081)[cite: 10].</li>
+            <li><strong>Rig & Recovery:</strong> Sub-500g EPS enclosure fabrication and dual-beacon recovery planning
+              (VOID-091/092)[cite: 10].</li>
+            <li><strong>Stratospheric Settlement:</strong> Execute autonomous, closed-loop M2M financial settlement in
+              near-space[cite: 10].</li>
+          </ul>
+        </div>
+      </div>
+
+      <p class="body-lead" style="margin-top: 1rem; text-align: center; color: var(--accent);">
+        <strong>The End Goal:</strong> Proving trustless M2M payments in near-space by flying our edge hardware up to 20
+        km on
+        a high-altitude balloon, turning an experiment into flight-proven infrastructure[cite: 10].
+      </p>
+    </div>
+
+    <div class="presenter-card">
+      <div class="presenter-title">Presenter Perspective</div>
+      "Here is how we transition off the bench: Phase A is solely about finishing our 10-for-10 hardware run and locking
+      the TRL 4 video proof[cite: 10]. Once that gate clears, Phase B begins our external push: we take that evidence
+      pack
+      directly to TinyGS, the Cambridge Rocketry Society, and HelioCubeSat to begin partner integration and formal
+      flight
+      planning[cite: 10]. At the same time, we promote the contract to Base Sepolia and submit our UK CAA
+      paperwork[cite:
+      10]. That leads into Phases C through E: cold-soak testing, assembling the flight payload, and executing the
+      balloon
+      launch[cite: 10]. Completing a settlement in near-space delivers the flight heritage required for commercial
+      satellite integration[cite: 10]."
+    </div>
+
+    <div class="footer">
+      <span>Roadmap & Milestones</span>
+      <span>Slide 09 / 10</span>
+    </div>
+  </section>
+
+  <!-- SLIDE 10: FIRST PRINCIPLES / WHY THIS WAY -->
+  <section class="slide" id="slide-10">
+    <div>
+      <div class="header">
+        <div>
+          <div class="badge-row">
+            <span class="pill pill-cyan">First Principles</span>
+            <span class="pill pill-emerald">Zero Compromise</span>
+            <span class="pill pill-amber">Design Rationale</span>
+          </div>
+          <h2>Why Build It This Way?</h2>
+          <p class="subtitle">Every strict constraint in Void Protocol exists because the laws of physics and radio
+            don't
+            care about standard web conventions.</p>
+        </div>
+      </div>
+
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th>The Common Assumption</th>
+            <th>The Orbital Reality</th>
+            <th>The Architectural Choice</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><strong>"Just use Protobuf or JSON-RPC"</strong></td>
+            <td>Schemas with dynamic fields balloon to 300 B–1.5 KB. Over LoRa, that forces multi-packet fragmentation
+              where a single dropped frame kills the payment.</td>
+            <td><strong>Fixed 192 B Frame:</strong> An entire signed intent fits inside one atomic radio burst with 63
+              bytes of headroom below the 255 B PHY ceiling[cite: 1, 3].</td>
+          </tr>
+          <tr>
+            <td><strong>"Why C++14 instead of Rust, Go, or Python?"</strong></td>
+            <td>GC runtimes suit non-critical payloads, not flight comms. While NASA targets Rust, battle-tested radio
+              drivers and
+              aerospace toolchains remain anchored in C/C++.</td>
+            <td><strong>Zero-Heap C++14:</strong> Interfaces directly with proven radio drivers today under strict SEI
+              CERT static
+              allocation, leaving a clean path to Rust as embedded crates mature.</td>
+          </tr>
+          <!-- <tr>
+            <td><strong>"Why C++14 instead of Rust, Go, or Python?"</strong></td>
+            <td>While (Go/MicroPython) run on payload computers for non-critical tasks, for
+              flight-critical systems Rust and C++ are chosen. Rust is NASA's targeted direction for new systems but
+              mature embedded radio drivers and legacy space toolchains remain
+              built in
+              C/C++.</td>
+            <td><strong>Pragmatic Zero-Heap C++14:</strong> We chose C++ to interface directly with battle-tested radio
+              ecosystems
+              today, enforcing zero-heap static allocation and SEI CERT standards while leaving an intentional path to
+              Rust as
+              aerospace tooling matures.</td>
+          </tr> -->
+          <tr>
+            <td><strong>"Just run a two-way handshake (TLS)"</strong></td>
+            <td>LEO passes last 5–8 minutes over intermittent ~1 kbps links[cite: 1]. Multi-roundtrip negotiation means
+              the bird passes over the horizon before the socket even authenticates[cite: 1].</td>
+            <td><strong>Store-and-Forward Asynchrony:</strong> One-shot ephemeral handshakes (AOS) and deterministic
+              nonces that settle the critical path in under 60 seconds[cite: 1].</td>
+          </tr>
+          <!-- <tr>
+            <td><strong>"Just build separate protocols for space and IoT"</strong></td>
+            <td>Maintaining divergent codebases for commercial satellites and community hardware slows adoption and
+              doubles verification costs.</td>
+            <td><strong>Mod-8 Congruence (14 ≡ 6 mod 8):</strong> One unified memory layout that serves licensed
+              aerospace
+              (CCSDS) and community SDRs/TinyGS (SNLP) with zero memory copies[cite: 2, 3, 8].</td>
+          </tr> -->
+
+          <tr>
+            <td><strong>"Why not build separate protocols for space and IoT?"</strong></td>
+            <td>Divergent codebases double verification costs. On flight computers, wasted CPU cycles copying data
+              directly drain
+              battery power.</td>
+            <td><strong>Unified 32/64-Bit Alignment:</strong> Both tiers share identical 8-byte aligned structs. Frames
+              process
+              with zero memory copies, minimizing CPU cycles and power draw[cite: 1].</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="presenter-card">
+      <div class="presenter-title">Presenter Perspective</div>
+      "To wrap up, people often ask: 'Why so much rigor? Why obsess over 8-byte alignment, zero heap allocations, and
+      custom packet framing?' The answer is simple: space doesn't tolerate web assumptions. If your runtime runs out of
+      heap, your flight computer dies. If your transaction needs three round-trips or balloons past 255 bytes, the
+      satellite flies over the horizon before the money moves. We didn't choose these constraints to be difficult—we
+      engineered Void Protocol to survive the physical realities of the wire."
+    </div>
+
+    <div class="footer">
+      <span>Architectural Rationale</span>
+      <span>Slide 10 / 10</span>
+    </div>
+  </section>
+
+  <script>
+    // Example keyboard trigger hook
+    function onSlideChange(newIndex) {
+      const vid = document.getElementById('flat-sat-demo-video');
+      if (!vid) return;
+
+      // Assuming this demo slide is at index 7
+      if (newIndex === 7) {
+        vid.currentTime = 0;
+        vid.play().catch(() => { });
+      } else {
+        vid.pause();
+      }
+    }
+    // Smooth keyboard navigation between slides
+    document.addEventListener('keydown', (e) => {
+      const slides = Array.from(document.querySelectorAll('.slide'));
+      const currentScroll = window.scrollY;
+      const slideHeight = window.innerHeight;
+      const currentIndex = Math.round(currentScroll / slideHeight);
+
+      if (e.key === 'ArrowDown' || e.key === 'PageDown' || e.key === ' ') {
+        e.preventDefault();
+        const nextIndex = Math.min(currentIndex + 1, slides.length - 1);
+        slides[nextIndex].scrollIntoView({ behavior: 'smooth' });
+      } else if (e.key === 'ArrowUp' || e.key === 'PageUp') {
+        e.preventDefault();
+        const prevIndex = Math.max(currentIndex - 1, 0);
+        slides[prevIndex].scrollIntoView({ behavior: 'smooth' });
+      }
+    });
+  </script>
+</body>
+
+</html>

@@ -25,7 +25,8 @@ namespace heartbeat_tx {
 namespace {
 
 constexpr unsigned long kIntervalMs    = 30000;  // VOID-022 AC cadence
-constexpr unsigned long kBusyBackoffMs = 1000;   // CAD-busy retry spacing
+constexpr unsigned long kBusyBackoffMs = 5000;   // CAD-busy retry spacing
+// constexpr unsigned long kBusyBackoffMs = 1000;   // CAD-busy retry spacing
 
 // Heltec V3 battery sense: ADC_CTRL (GPIO37) gates a 390k/100k divider
 // feeding VBAT_Read (GPIO1); battery mV ≈ adc × 4.9. The enable
@@ -128,7 +129,7 @@ bool service(uint16_t apid, uint8_t sys_state, volatile bool* rx_pending) {
     // caller's flag). TX shares the SX126x FIFO base with RX, so
     // transmitting now would clobber the received bytes — yield and
     // let the main loop drain RX first.
-    if (rx_pending != nullptr && *rx_pending) {
+    if (rx_pending != nullptr && *rx_pending && Void.isRealReception()) {
         Void.radio.startReceive();
         next_attempt_ms = millis() + kBusyBackoffMs;
         return false;

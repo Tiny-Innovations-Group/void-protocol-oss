@@ -1,0 +1,282 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Void Protocol — Venture Dossier</title>
+</head>
+<body>
+<h1>Void Protocol v2.1 — Venture Dossier</h1>
+<p>Compiled 2026-09-14 for Tiny Innovation Group Ltd; status: "Pre-certification: engineered to NSA/CISA Memory Safety Guidelines and SEI CERT C++ standards but not yet third-party certified"; license: Apache 2.0.</p>
+<ul>
+<li>Protocol v2.1</li>
+<li>Current maturity: TRL 4 target (flat-sat desk demo)</li>
+<li>Target launch window: October 2026 high-altitude balloon (HAB) flight</li>
+<li>Market: Machine-to-Machine (M2M) settlement for orbital, remote, and air-gapped assets</li>
+<li>Stack: C++14 (ESP32-S3), Go 1.25, Solidity/Foundry</li>
+</ul>
+
+<section id="wedge-problem">
+<h2>1. The Wedge &amp; Problem Statement</h2>
+<h3>Problem Statement</h3>
+<ul>
+<li>Conventional payment rails (card networks, custodial wallets, cloud APIs) assume continuous, bidirectional internet connectivity between transacting parties.</li>
+<li>Orbital and remote assets operate on intermittent, high-latency, low-bandwidth links: short ground passes, LoRa store-and-forward at ~1 kbps, no TCP/IP end-to-end.</li>
+<li>No existing settlement protocol fits a cryptographically verifiable payment intent into the physical ceiling of a 255-byte LoRa PHY frame on a microcontroller that cannot allocate heap.</li>
+<li>Result: edge assets (satellites, remote sensors, air-gapped devices) cannot autonomously buy or sell services (data, fuel, compute) — there is no trustless commerce layer below the connectivity line.</li>
+<li>Void Protocol's answer: an asynchronous Store-and-Forward settlement protocol — a Layer 2 M2M protocol where a signed payment intent travels over a disrupted link, is verified at the ground segment (bouncer), settled on an L2 blockchain, and the signed receipt is delivered back asynchronously. Entities: Sat A (Seller) broadcasts invoices; Sat B (Buyer/Mule) encapsulates and signs payment intent with hardware identity keys (Ed25519); the Ground Station is the L2 authority that validates signatures, batches settlements, and issues the unlock.</li>
+</ul>
+<h3>The Shift / Catalyst</h3>
+<ul>
+<li>Cheap, fast L2 blockchain finality (Arbitrum/Base-class networks) makes asynchronous settlement economically viable per-transaction.</li>
+<li>Commodity edge hardware: ESP32-S3 (Heltec WiFi LoRa 32 V3, ~$30-class) with SX1262 LoRa radios puts a signing, transmitting settlement node within hobby budgets.</li>
+<li>TinyGS: a free, global community ground-station mesh that can ingest community-tier (SNLP) frames — zero-cost network rollout for adoption.</li>
+<li>Small-satellite proliferation (PocketQube, university CubeSats) creates demand for per-asset, per-transaction monetization of orbital services.</li>
+<li>Scale stat: the protocol's 32-bit <code>sat_id</code> addressing supports 4.2 billion global DePIN edge identities.</li>
+</ul>
+<h3>Target Operator / ICP</h3>
+<ul>
+<li>Community tier: amateur radio operators, university small-sat labs, TinyGS station owners, high-altitude balloon (HAB) and remote-sensing operators on ISM bands — adoption play, Apache 2.0, "clone and run".</li>
+<li>Enterprise tier: defense and commercial satellite operators (licensed bands: S-Band, X-Band, Link-16, phased array), fleet operators needing multi-session multiplexing (50+ concurrent connections), identity authority (key rotation, revocation, reputation scoring), high-frequency settlement batching with MEV protection, and factory key provisioning (ATECC608/SE050 chips).</li>
+<li>Commercial model: Open Core — "Thick Client, Thin Server": all device-side code is OSS to drive standard adoption; coordination of many nodes (identity, settlement aggregation, fleet analytics) is the proprietary Enterprise product. Rule of thumb: optimizing one node is Open Source; orchestrating many nodes is Enterprise.</li>
+</ul>
+<h3>Sources</h3>
+<ul>
+<li><code>README.md</code></li>
+<li><code>ARCHITECTURE.md</code></li>
+<li><code>GOVERNANCE.md</code></li>
+<li><code>docs/journey_to_hab_plain_text.md</code></li>
+<li>Notion page "Open Source Strategy &amp; Commercial Boundaries (v2.1)" (mirrored in <code>GOVERNANCE.md</code>)</li>
+</ul>
+</section>
+
+<section id="architecture">
+<h2>2. System Architecture &amp; Topology</h2>
+<h3>High-Level Layout</h3>
+<ul>
+<li><code>void-core/</code> — pure C++14 protocol layer, zero hardware dependencies; packet structs (<code>void_packets.h</code>, <code>void_packets_ccsds.h</code>, <code>void_packets_snlp.h</code>), <code>security_manager</code> (Ed25519/X25519/ChaCha20/SHA-256 via libsodium), pure-function builders (<code>packet_d_builder</code>, <code>heartbeat_builder</code>).</li>
+<li><code>satellite-firmware/</code> — PlatformIO entrypoints for the Heltec V3; compiles two roles from one codebase: seller (invoice beacon, Packet C RX → Packet D delivery emission + UNLOCK display) and buyer (Packet A capture → signed Packet B TX, Packet D delivery display), plus synthetic GPS stub and heartbeat TX.</li>
+<li><code>ground-station/</code> — desktop C++14 bouncer: <code>serial_hal</code> (USB serial), <code>Bouncer</code> (Ed25519 verify, length-check-first), <code>gateway_client</code> (zero-heap HTTP POST), <code>ack_builder</code> (ACK emission), <code>egress_poll_client</code> + template-based egress orchestrator (static dispatch, no virtual functions, no heap); <code>ground-station/ui/</code> — Dear ImGui operator console (4 fixed panels).</li>
+<li><code>gateway/</code> — Go 1.25 Web3 router: gin HTTP server on :8080, Kaitai-generated parser, Ed25519 verifier, satellite registry, <code>EscrowClient</code> + <code>BufferedSubmitter</code> (batch 10 / 5 s, retry-once) via go-ethereum, <code>receipt.Store</code> (append-only JSONL), <code>chain.Watcher</code> (<code>SettlementCreated</code> poll every 2 s), telemetry store (heartbeats).</li>
+<li><code>contracts/</code> — Foundry project; <code>Escrow.sol</code> with <code>settleBatch</code> (max 10, USDC-only, duplicate-nonce guard, <code>SettlementCreated</code> event); runs on local Anvil chain (chain ID 31337) for the flat-sat; testnet promotion is Phase B.</li>
+<li><code>docs/kaitai_struct/</code> — canonical Kaitai Struct schema (.ksy): the source of truth for the wire format; the Go parser is auto-generated from it.</li>
+</ul>
+<h3>Core Technology Stack</h3>
+<table>
+<caption>Core technology stack by layer</caption>
+<thead>
+<tr><th>Layer</th><th>Technology</th><th>Notes</th></tr>
+</thead>
+<tbody>
+<tr><td>Firmware</td><td>C++14, PlatformIO (<code>heltec_wifi_lora_32_V3</code> env), strict flags <code>-Werror -Wvla</code></td><td>ESP32-S3 (Heltec WiFi LoRa 32 V3), SX1262 LoRa</td></tr>
+<tr><td>Firmware tests/build</td><td>CMake ≥3.14, GoogleTest v1.14.0 + libsodium 1.0.20 (FetchContent)</td><td>targets <code>void_full_tests</code> (SNLP) and <code>void_full_tests_ccsds</code></td></tr>
+<tr><td>Ground station (desktop)</td><td>C++14, CMake, full CERT warning stack incl. <code>-Wconversion -Wold-style-cast</code></td><td>bouncer + zero-heap HTTP client</td></tr>
+<tr><td>Operator console</td><td>GLFW 3.3.8 + Dear ImGui 1.90.5 (FetchContent, <code>VOID_BUILD_UI=ON</code>)</td><td>1760×826 window, 4 fixed panels</td></tr>
+<tr><td>Gateway</td><td>Go 1.25, gin v1.11.0, go-ethereum v1.15.11, kaitai Go runtime v0.11.0, godotenv</td><td>HTTP :8080, web3 signing</td></tr>
+<tr><td>Settlement</td><td>Solidity, Foundry (forge/anvil/cast), anvil 1.5.1 verified</td><td>local Anvil chain ID 31337</td></tr>
+<tr><td>Crypto primitives</td><td>Ed25519 (identity signatures), X25519 (ephemeral ECDH handshake), ChaCha20 (payload encryption — disabled in alpha via <code>VOID_ALPHA_PLAINTEXT</code> build flag), SHA-256 (hashing/KDF)</td><td>libsodium</td></tr>
+</tbody>
+</table>
+<h3>Gateway &amp; Interfaces</h3>
+<table>
+<caption>Gateway HTTP endpoints</caption>
+<thead>
+<tr><th>Endpoint</th><th>Method</th><th>Function</th></tr>
+</thead>
+<tbody>
+<tr><td><code>/api/v1/ingest</code></td><td>POST</td><td>Raw SNLP/CCSDS frame as <code>application/octet-stream</code>; global CRC32 pre-validation → Kaitai parse → Ed25519 signature verify against registry → enqueue settlement intent; 400 on invalid length/CRC/signature.</td></tr>
+<tr><td><code>/api/v1/status</code></td><td>GET</td><td>Gateway health, ingest counters, receipt counts by status.</td></tr>
+<tr><td><code>/api/v1/egress/pending</code></td><td>GET</td><td>Queued Packet C receipts (PENDING, page-capped) for bouncer polling.</td></tr>
+<tr><td><code>/api/v1/egress/ack</code></td><td>POST</td><td>Flips receipt PENDING → DISPATCHED; idempotent.</td></tr>
+</tbody>
+</table>
+<p>The gateway is configured via environment variables: <code>VOID_ALPHA_PLAINTEXT</code>, <code>VOID_ESCROW_ADDRESS</code> (enables on-chain pipeline), <code>VOID_ETH_RPC_URL</code> (default 127.0.0.1:8545), <code>VOID_GATEWAY_PRIVATE_KEY</code>, <code>VOID_RECEIPTS_PATH</code> (default <code>gateway/data/receipts.json</code>), <code>VOID_RECEIPTS_SELLER_SEED</code>, <code>VOID_RECEIPTS_SELLER_APID</code>.</p>
+<h3>Wire Protocol &amp; Packet Structures</h3>
+<p>Dual-tier framing multiplexed by sync word — SNLP community tier (14-byte header, sync word <code>0x1D01A5A5</code>, ISM/LoRa/TinyGS bands) and CCSDS enterprise tier (6-byte primary header, CCSDS 133.0-B-2). Headers are Big-Endian; payloads are Little-Endian; all multi-byte fields pack/unpack via bit-shifting.</p>
+<table>
+<caption>Packet types and frame sizes by tier</caption>
+<thead>
+<tr><th>Packet</th><th>CCSDS frame (6 B hdr)</th><th>SNLP frame (14 B hdr)</th><th>Purpose</th></tr>
+</thead>
+<tbody>
+<tr><td>A Invoice</td><td>72 B</td><td>80 B</td><td>Service offer from Sat A</td></tr>
+<tr><td>B Payment</td><td>184 B</td><td>192 B</td><td>Encapsulated, signed payment intent</td></tr>
+<tr><td>C Receipt</td><td>104 B</td><td>112 B</td><td>Signed proof-of-execution from Sat A</td></tr>
+<tr><td>D Delivery</td><td>128 B</td><td>136 B</td><td>Receipt delivery to ground ledger</td></tr>
+<tr><td>H Handshake</td><td>112 B</td><td>120 B</td><td>Ephemeral X25519 ECDH key exchange</td></tr>
+<tr><td>ACK</td><td>120 B</td><td>136 B</td><td>Ground-to-sat unlock/acknowledgement</td></tr>
+<tr><td>Heartbeat (L)</td><td>40 B</td><td>48 B</td><td>LoRa beacon/telemetry frame</td></tr>
+<tr><td>TunnelData</td><td>88 B</td><td>96 B</td><td>Encrypted tunnel payload</td></tr>
+</tbody>
+</table>
+<p>All frame sizes satisfy <code>sizeof % 8 == 0</code> and <code>&lt;= 255</code> (SX1262 LoRa PHY payload ceiling); values from <code>void-core/include/void_packets.h</code>; flat-sat alpha flies SNLP plaintext only.</p>
+<h3>Data Flow</h3>
+<ol>
+<li>Seller Heltec broadcasts Packet A (Invoice) over LoRa.</li>
+<li>Buyer Heltec validates terms, wraps a payment intent into Packet B, signs it (Ed25519 over header + <code>body[0..105]</code>) and transmits.</li>
+<li>Ground bouncer (desktop C++) receives the frame over USB serial, verifies length then signature, forwards the raw frame to the gateway via HTTP POST <code>/api/v1/ingest</code>.</li>
+<li>Gateway pre-validates CRC32, parses the frame with the Kaitai parser, verifies the Ed25519 signature against the satellite registry, and enqueues the settlement intent.</li>
+<li><code>BufferedSubmitter</code> batches up to 10 intents and calls <code>settleBatch</code> on the Escrow contract (local Anvil); the transaction mines and emits <code>SettlementCreated</code>.</li>
+<li><code>chain.Watcher</code> detects the event; the receipt processor builds and signs Packet C, appends the record to <code>receipts.json</code> (append-only JSONL, crash-safe).</li>
+<li>Bouncer polls GET <code>/api/v1/egress/pending</code>, relays Packet C to the seller over LoRa, and ACKs the gateway (POST <code>/api/v1/egress/ack</code> → DISPATCHED).</li>
+<li>Seller verifies the receipt, displays UNLOCKED, and emits Packet D (Delivery); buyer receives and displays DELIVERY RECEIVED. Heartbeat (Packet L) beacons throughout for telemetry.</li>
+</ol>
+<h3>Sources</h3>
+<ul>
+<li><code>README.md</code></li>
+<li><code>ARCHITECTURE.md</code></li>
+<li><code>ground-station/README.md</code></li>
+<li><code>gateway/README_GATEWAY.md</code></li>
+<li><code>gateway/cmd/server/main.go</code></li>
+<li><code>void-core/README_VOID_CORE.md</code></li>
+<li><code>satellite-firmware/README_SAT_FWARE.md</code></li>
+<li><code>docs/kaitai_struct/*.ksy</code></li>
+<li><code>CHANGELOG.md</code></li>
+</ul>
+</section>
+
+<section id="technical-moat">
+<h2>3. Defensibility &amp; Hard Metrics</h2>
+<h3>Engineering Constraints</h3>
+<ul>
+<li>Zero-heap allocation: <code>malloc</code>, <code>new</code>, <code>free</code>, <code>calloc</code>, <code>realloc</code> are banned in all C++ — eliminates heap fragmentation by construction.</li>
+<li>No dynamic strings: <code>std::string</code> and Arduino <code>String</code> banned; <code>const char*</code> + <code>snprintf</code> with bounded buffers only.</li>
+<li>No VLAs, no C-style casts; <code>reinterpret_cast</code> only after length AND header-ID validation ("length check first, struct cast second" — VOID-112 invariant).</li>
+<li>Zero-copy deserialization: payloads parsed directly from static buffers via APID header peeking and exact-length validation before pointer cast; the Go gateway likewise parses raw frames directly from <code>http.Request.Body</code> with no intermediate JSON.</li>
+<li>Const-correctness mandatory; <code>static</code> persistent buffers; stack allocation for small short-lived values.</li>
+<li>Compile-time enforcement on BOTH firmware and desktop builds: <code>-Wall -Wextra -Werror -Wshadow -Wvla -Wconversion -Wsign-conversion -Wcast-align -Wold-style-cast -Wformat-security -O2 -D_FORTIFY_SOURCE=2</code> — non-compliant code fails the build, so the memory-safety posture cannot silently degrade at the gateway boundary.</li>
+</ul>
+<h3>Wire Efficiency &amp; Compile-Time Packet Guarantees</h3>
+<ul>
+<li>Every over-the-air struct is <code>#pragma pack(push, 1)</code> + <code>__attribute__((packed))</code>, and carries two static asserts: 8-byte machine-cycle alignment and the 255-byte SX1262 LoRa PHY payload ceiling. Tail padding is an explicit zeroed <code>_tail_pad[N]</code>, never accidental.</li>
+<li>The two static asserts, as enforced on Packet B:
+<pre><code>static_assert(sizeof(PacketB_t) % 8 == 0, "8-byte frame alignment");
+static_assert(sizeof(PacketB_t) &lt;= 255, "LoRa PHY payload ceiling");</code></pre>
+</li>
+<li>Locked wire-format invariants (enforced byte-identically across C++, Go, and the Kaitai schema):
+<ul>
+<li>Nonce (VOID-110): ChaCha20 nonce derived as <code>sat_id[4] || epoch_ts[8]</code> (12 bytes) on both ends — never transmitted; zero wire bytes reserved for it.</li>
+<li>Signature scope (VOID-111): Ed25519 covers header + <code>body[0..105]</code> for Packet B (<code>packetBSigScopeBody = 106</code>), accessed via <code>offsetof</code>, identical across tiers.</li>
+<li>Bounds check (VOID-112): <code>packetBBodyLen = 178</code>; ingest rejects under-sized buffers with HTTP 400 before any struct cast.</li>
+<li>SNLP header (VOID-113): exactly 14 bytes, sync word <code>0x1D01A5A5</code>; CCSDS header exactly 6 bytes.</li>
+<li>Frame alignment (VOID-114B): every frame total <code>% 8 == 0</code>.</li>
+<li>Endianness: Big-Endian headers, Little-Endian payloads, packed/unpacked exclusively via bit-shifting — never raw memory mapping.</li>
+<li>CRC pre-validation (VOID-122): global CRC32 verified for PacketD and ACK (both tiers) after magic-byte routing, before any body field is trusted — RF bit-flips cannot misroute a handler.</li>
+</ul>
+</li>
+<li>Deterministic golden vectors: checked-in <code>.bin</code> wire vectors for all 8 packet types in both tiers (<code>test/vectors/ccsds/</code>, <code>test/vectors/snlp/</code>); builders on both C++ and Go sides must be byte-exact; cross-tier signature-parity and sig-scope boundary tests pin the format.</li>
+</ul>
+<h3>Barrier to Entry</h3>
+<ul>
+<li>The moat is the combination, not any single part: defense-grade memory-safety discipline (targeting NSA/CISA + SEI CERT) on a microcontroller, plus blockchain settlement engineering, plus RF/wire-format engineering — three rare specialisms in one team.</li>
+<li>Cross-language byte-identity: the same wire invariants hold in C++ firmware, the Go gateway, and the canonical Kaitai schema — replicating it means re-deriving every offset, scope, and assert, not gluing off-the-shelf MQTT + crypto libraries.</li>
+<li>Compliance posture as product: pre-certification engineering to NSA/CISA Memory Safety and SEI CERT C++ standards with compiler-enforced rejection — unreplicable with general-purpose web stacks where heap allocation and GC pauses are acceptable.</li>
+<li>Open-core distribution: the OSS thick client is designed to become the standard (unrestricted amateur/university adoption), while network coordination (identity authority, high-frequency batching, MEV protection, factory provisioning) is proprietary — the adoption engine itself widens the moat.</li>
+</ul>
+<h3>Sources</h3>
+<ul>
+<li><code>CLAUDE.md</code> engineering standards</li>
+<li><code>void-core/include/void_packets*.h</code></li>
+<li><code>ground-station/README.md</code> (compiler posture)</li>
+<li><code>docs/kaitai_struct/*.ksy</code></li>
+<li><code>test/vectors/README.md</code></li>
+<li><code>gateway/internal/void_protocol/</code></li>
+<li><code>CHANGELOG.md</code></li>
+<li><code>GOVERNANCE.md</code></li>
+</ul>
+</section>
+
+<section id="build-velocity">
+<h2>4. Current Implementation Status</h2>
+<h3>Completed Components</h3>
+<table>
+<caption>Completed subsystems and build status</caption>
+<thead>
+<tr><th>Subsystem</th><th>Build Method</th><th>Status</th></tr>
+</thead>
+<tbody>
+<tr><td>Go Gateway (HTTP + Web3 router)</td><td><code>go build ./...</code>, Go 1.25</td><td>Operational — live hardware-verified since 2026-04-28</td></tr>
+<tr><td>Kaitai parser (dual-tier SNLP/CCSDS)</td><td>Generated from <code>docs/kaitai_struct/*.ksy</code> (compiler 0.11+)</td><td>Operational — header-size, CRC, nonce, and round-trip parity tests green</td></tr>
+<tr><td>Ed25519 verify gate</td><td>Go crypto/ed25519, <code>internal/core/security</code></td><td>Operational — live signature verify on real hardware frame</td></tr>
+<tr><td>Escrow contract (<code>Escrow.sol</code>)</td><td>Foundry (forge build/test; anvil 1.5.1)</td><td>6/6 Foundry tests; deterministic deploy on local Anvil (chain 31337)</td></tr>
+<tr><td>Gateway → contract settlement</td><td>go-ethereum; <code>simulated.Backend</code> integration tests</td><td>Operational — <code>EscrowClient</code> + <code>BufferedSubmitter</code> (batch 10 / 5 s, retry-once), nonce derivation</td></tr>
+<tr><td>Receipt pipeline (Packet C + <code>receipts.json</code>)</td><td>Go unit + E2E tests</td><td>Operational — append-only JSONL, PENDING/DISPATCHED state machine, restart-safe</td></tr>
+<tr><td>Egress API (pending/ack)</td><td>Go table-driven tests</td><td>Operational — idempotent ACKs, page caps, crash-safety across restart (3 dedicated tests + E2E replay)</td></tr>
+<tr><td>Ground bouncer (desktop C++14)</td><td>CMake + GoogleTest + libsodium (FetchContent), full CERT flag stack</td><td>Operational — real Ed25519 verify, ACK emission, egress poll client, zero heap</td></tr>
+<tr><td>void-core firmware libs</td><td>CMake, GoogleTest v1.14.0, targets for both tiers</td><td>60/60 tests green across SNLP and CCSDS targets</td></tr>
+<tr><td>ESP32 firmware (seller + buyer roles)</td><td>PlatformIO, <code>heltec_wifi_lora_32_V3</code></td><td>Hardware-proven: full A→B→ACK→Settle→C→D loop on the bench (2026-06-12)</td></tr>
+<tr><td>Golden vectors</td><td>deterministic Go generator, checked in</td><td>8 packet types × 2 tiers, byte-identical regeneration</td></tr>
+<tr><td>ImGui operator console</td><td>GLFW + Dear ImGui via FetchContent (<code>VOID_BUILD_UI=ON</code>)</td><td>Stage-1 inert port complete (2026-09-13); live-data wiring in progress (VOID-142)</td></tr>
+<tr><td>CI</td><td>GitHub Actions (build.yml, test.yml)</td><td>Present</td></tr>
+</tbody>
+</table>
+<h3>Test &amp; Validation Status</h3>
+<ul>
+<li>76 Go test functions across the gateway (ingest, egress, crash-safety, chain client/submitter/watcher, receipt store/processor, telemetry, parser/header/nonce/CRC parity).</li>
+<li>60/60 void-core ctest (GoogleTest + libsodium, both SNLP and CCSDS targets).</li>
+<li>41/41 ground-station ctest (GoogleTest bootstrapped in the desktop tree: <code>ack_builder</code>, egress hex/json/poll/orchestrator, smoke).</li>
+<li>6/6 Foundry Escrow tests (including zero-address wallet rejection, duplicate-nonce revert, empty-batch fail).</li>
+<li>Live hardware evidence: 2026-04-28 — first live single-pass A→B→ACK→Settle→C loop on real hardware: 192-byte SNLP Packet B admitted, Ed25519 verified, <code>settleBatch</code> mined in Anvil block 2, receipt persisted, egress dispatched.</li>
+<li>Bench evidence: 2026-06-12 — 7 consecutive transactions across two gateway/Anvil sessions; <code>receipts.json</code> shows 7 distinct <code>payment_ids</code>, each PENDING→DISPATCHED with a unique settlement transaction (blocks 2–11), zero double-settles, clean reload after the gateway restart between sessions.</li>
+<li>Known scaffold gap: <code>Bouncer::decrypt_payload</code> remains a passthrough — intentional (plaintext alpha; ChaCha20 decryption is an explicit non-goal until post-HAB beta).</li>
+</ul>
+<h3>Sources</h3>
+<ul>
+<li>Notion Tickets database (journey-to-hab view)</li>
+<li><code>docs/journey_to_hab_plain_text.md</code> (Change Log v10–v15)</li>
+<li><code>gateway/</code>, <code>ground-station/</code>, <code>void-core/</code> test trees</li>
+<li><code>.github/workflows/</code></li>
+</ul>
+</section>
+
+<section id="venture-roadmap">
+<h2>5. Roadmap &amp; De-risking</h2>
+<h3>Context</h3>
+<p>A locked 37-ticket delivery path ("Journey to HAB", 5 phases over 26 weeks) targets a full commerce loop on a high-altitude balloon in the October 2026 window. Board state as of 2026-09-14: 42 tracked items on the journey (37 numbered tickets plus inserted sub-tickets); 17 Done, 2 In progress, 23 Not started. Notion Status is authoritative for the board; items VOID-116 (#9) and VOID-119 (#10) are documented as "Deferred (post-flat-sat)" in the journey Change Log v5 — cosmetic u32 alignment inside packed structs with zero runtime cost on the ESP32-S3.</p>
+<h3>Active Sprint</h3>
+<table>
+<caption>Active sprint tickets (journey-to-hab board)</caption>
+<thead>
+<tr><th>Journey Order</th><th>Ticket</th><th>Context</th><th>Priority</th><th>Assignee</th></tr>
+</thead>
+<tbody>
+<tr>
+<td>6.6</td>
+<td>VOID-142 — Ground Station UI live-data wiring (gateway + chain + contract, then serial)</td>
+<td>Stage 1 (branch <code>void_142_part1</code>): gateway GET /api/v1/status + counters, UI process manager (anvil/gateway spawn, START/STOP, contract load via forge create), live server/blockchain panels, receipts.json drawer tailer. Stage 2 (after Stage-1 confirmation): bouncer child process + serial wiring (SEND ACK, leg FSM, heartbeats tail).</td>
+<td>P0 - Critical</td>
+<td>Unassigned (solo founder-operator)</td>
+</tr>
+<tr>
+<td>7</td>
+<td>VOID-022 — Heartbeat Generation &amp; Transmission</td>
+<td>Firmware emits heartbeat every N seconds over LoRa; alpha flies with intentionally unauthenticated heartbeat (telemetry-only choice — crypto auth deferred to post-HAB beta); code landed, pending bench confirmation.</td>
+<td>P0</td>
+<td>Unassigned (solo founder-operator)</td>
+</tr>
+</tbody>
+</table>
+<h3>Immediate Milestones</h3>
+<ol>
+<li>Close the active sprint — land VOID-142 Stage 1 then Stage 2 (live gateway/chain/contract wiring into the ImGui console) and bench-confirm VOID-022 heartbeat traffic. This completes the operator observation surface (4-panel console with per-pass history tracking toward the 10/10 gate) used to record the TRL 4 evidence video.</li>
+<li>VOID-130 — Flat-sat gate (TRL 4 evidence pack): two Heltec boards + ground bouncer + Go gateway + local Anvil chain execute the full A→B→ACK→Settle→C→D loop with 10 consecutive passes plus 1 tamper-rejection; <code>receipts.json</code> shows 10 settled events; a gateway restart mid-run produces 0 double-settles. This is the seed-funding evidence artifact; nothing in Phase B starts until it is green.</li>
+<li>Phase B de-risking — external trials and pilots: TinyGS ingest path (VOID-133: HTTP→MQTT bridge or direct TinyGS HTTP ingest — day-1 spike), testnet promotion (VOID-053: contract moves from local Anvil to Sepolia/Base Sepolia through the TinyGS path), and the CAA NOTAM application filed day 1 of Phase B (VOID-090; 28-day statutory lead). Followed by Phases C–E toward the October 2026 HAB flight: environmental validation (cold soak −30 °C, 20 km line-of-sight range test, 24 h duty-cycle soak), payload enclosure and recovery system, launch rehearsal, dress rehearsal, and the flight report that closes the journey.</li>
+</ol>
+<h3>Explicitly Deferred to Post-HAB Beta</h3>
+<ul>
+<li>ChaCha20 payload encryption (alpha flies plaintext; <code>VOID_ALPHA_PLAINTEXT</code> build flag stays on)</li>
+<li>Heartbeat cryptographic authentication</li>
+<li>Nonce/replay rejection tracking</li>
+<li>Production key segregation (VOID-121)</li>
+<li>Testnet smart-contract deployment for the flat-sat (local Anvil only)</li>
+<li>Full SQLite/FastAPI dashboard (<code>receipts.json</code> append-only JSONL is the TRL 4 evidence artifact)</li>
+</ul>
+<h3>Sources</h3>
+<ul>
+<li>Notion Tickets database, filter Journey = journey-to-hab, sorted by Journey Order</li>
+<li><code>docs/journey_to_hab_plain_text.md</code></li>
+</ul>
+</section>
+
+<p>Compiled 2026-09-14 from repository documentation and the Notion 'Tickets' workspace. Facts are as-of the stated dates; the locked journey document and Notion board are the living sources of truth.</p>
+</body>
+</html>

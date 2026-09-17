@@ -404,7 +404,7 @@ void runSellerLoop() {
 
 
 
-    /* ---------------------------------------------------------
+
     // Removed for demo
     // ---------------------------------------------------------
     // 2d. VOID-022: 30 s heartbeat telemetry (droppable, CAD-gated,
@@ -412,7 +412,7 @@ void runSellerLoop() {
     //     shares the SX126x FIFO base with RX, so transmitting before
     //     draining a received frame would clobber it.
     // ---------------------------------------------------------
-    if (!rx_flag) {
+    if (!rx_flag && txState == SellerState::ADVERTISING) {
         heartbeat_tx::service(
             SELLER_APID,
             (txState == SellerState::ADVERTISING)
@@ -420,6 +420,5 @@ void runSellerLoop() {
                 : heartbeat_tx::kSysStateConnected,
             &rx_flag);
     }
-            */
 
 }

@@ -238,22 +238,21 @@ void runBuyerLoop() {
         }
     }
 
-    /* ---------------------------------------------------------
+
     // Removed for demo
 
     // =====================================================================
     // 1c. VOID-022: 30 s heartbeat telemetry (droppable, CAD-gated, 1 s
     //     backoff while busy). Skipped while an RX is pending (shared
     //     SX126x FIFO base).
+
+            // **old ***invoice_pending ? heartbeat_tx::kSysStateConnected
     // =====================================================================
-    if (!rx_flag) {
+    if (!rx_flag && !invoice_pending) {
         heartbeat_tx::service(
-            BUYER_APID,
-            invoice_pending ? heartbeat_tx::kSysStateConnected
-                            : heartbeat_tx::kSysStateRxActive,
+            BUYER_APID,heartbeat_tx::kSysStateRxActive,
             &rx_flag);
     }
-    // --------------------------------------------------------- */
 
     // =====================================================================
     // 2. Serial ground-link commands
