@@ -224,6 +224,7 @@ if(VOID_BUILD_UI)
         ui/http_poller.cpp
         ui/service_poller.cpp
         ui/receipts_tailer.cpp
+        ui/heartbeats_tailer.cpp
     )
 
     target_include_directories(ground_station_ui PRIVATE

@@ -27,6 +27,7 @@
 #include "pass_store.h"
 #include "service_poller.h"
 #include "receipts_tailer.h"
+#include "heartbeats_tailer.h"
 
 #if defined(__APPLE__)
 #define GL_SILENCE_DEPRECATION
@@ -63,6 +64,7 @@ const ImVec4 kInputFocus  = ImVec4(0.231f, 0.333f, 0.529f, 1.0f); // #3b5587
 const ImVec4 kLogBg       = ImVec4(0.039f, 0.039f, 0.039f, 1.0f); // #0a0a0a
 const ImVec4 kLogBorder   = ImVec4(0.165f, 0.165f, 0.188f, 1.0f); // #2a2a30
 const ImVec4 kStateOk     = ImVec4(0.263f, 0.776f, 0.400f, 1.0f); // #43c666
+const ImVec4 kTextAmber  = ImVec4(0.855f, 0.643f, 0.125f, 1.0f); // #daa420 SAT HEALTH [STALE]
 const ImVec4 kMarkerIdle  = ImVec4(0.353f, 0.353f, 0.392f, 1.0f); // #5a5a64
 const ImVec4 kBackdrop    = ImVec4(0.000f, 0.000f, 0.000f, 0.65f);
 
@@ -133,15 +135,19 @@ const char* kHelpPanels =
     "    ACK, Receipt (C), Delivery (D), Heartbeat (HB) all appear here.\n"
     "    PASS HISTORY (right column) keeps every completed pass — streak\n"
     "    #, time, A→D duration; red RESET rows mark tamper rejects.\n"
-    "2. Go Server (Gateway) — gateway health, verify counters, HTTP request log.\n"
+    "2. Go Server (Gateway) — gateway health, verify counters, SAT HEALTH\n"
+    "    live snapshot (per-satellite battery, temp, freshness), HTTP log.\n"
     "3. L2 Blockchain (Anvil) — mined blocks, settleBatch txs, SettlementCreated\n"
     "    events; newest at bottom.\n"
     "4. Operator Controls — the demo lifecycle lives here: load, start, stop.\n"
-    "Side panel (SHOW PANEL) — EDIT CONTRACT / VIEW RECEIPTS / DEBUG.\n"
-    "    DEBUG is a read-only tap of the raw serial wire: every line the\n"
-    "    board sent (←) and every line the ground wrote back (→), each\n"
-    "    stamped HH:MM:SS (the same wall clock as PASS HISTORY), verbatim\n"
-    "    hex payloads included — the unfiltered view behind Panel 1.";
+    "Side panel (SHOW PANEL) — EDIT CONTRACT / VIEW RECEIPTS / DEBUG /\n"
+    "    HEARTBEATS. DEBUG is a read-only tap of the raw serial wire: every\n"
+    "    line the board sent (←) and every line the ground wrote back (→),\n"
+    "    each stamped HH:MM:SS, verbatim hex payloads included.\n"
+    "    HEARTBEATS is the gateway-validated telemetry history — one row\n"
+    "    per frame: time, APID, battery, temp, GPS lock, pressure,\n"
+    "    coordinates. Panel 2's SAT HEALTH box shows the same data as a\n"
+    "    live per-satellite snapshot with [OK]/[STALE]/[LOST] freshness.";
 
 const char* kHelpStates =
     "[IDLE]   no activity yet\n"
@@ -214,6 +220,7 @@ void unsnap_full() {
 // --- Live service state (VOID-142 1c) ---
 service_view_t  g_service = {};
 receipts_view_t g_receipts = {};
+heartbeats_view_t g_heartbeats = {}; // VOID-146: SAT HEALTH + history tap
 log_ring_t      g_ring_http  = {};
 log_ring_t      g_ring_chain = {};
 log_ring_t      g_ring_rf    = {}; // VOID-142 stage-2: bouncer stdout
@@ -471,6 +478,7 @@ void tick_services() {
     if (ImGui::GetTime() - g_last_poll >= 0.5) {
         service_poll_tick(&g_service);
         receipts_tail_tick(&g_receipts);
+        heartbeats_tail_tick(&g_heartbeats); // VOID-146: incremental
         g_last_poll = ImGui::GetTime();
     }
     // Harvest a finished async deploy on the render thread (VOID-142).
@@ -585,6 +593,13 @@ void clear_button(const char* id, log_ring_t* ring, char* snap) {
 // the box as-is beneath the header.
 const char* kHttpLogHeader =
     "      TIMESTAMP             | CODE|       LATENCY |              IP | METHOD  PATH";
+
+// Pinned column header above the HEARTBEATS table (VOID-146). Column
+// starts line up with the row snprintf widths in render_side_panel:
+// TIME@0 · APID@10 · VBATT@21 · TEMP@28 · GPS@36 · PRESSURE@40 ·
+// LAT@51 · LON@62 (the Panel-2 gin-header pattern).
+const char* kHbLogHeader =
+    "TIME      APID       VBATT  TEMP    GPS PRESSURE   LAT        LON";
 
 void begin_panel(const char* id, const float x, const float y) {
     ImGui::SetCursorPos(ImVec2(SC(x), SC(y)));
@@ -745,9 +760,15 @@ void render_panel2() {
     begin_panel("PanelGoServer", kMargin + kPanelW + kSpacing, kMargin);
     panel_title("2. Go Server (Gateway)", true);
     ImGui::Separator();
-    // VOID-142 1c: live status fields from GET /api/v1/status (2 Hz).
-    // Fixed 18ch label column, one bounded line per field.
+    // Two-column top zone (VOID-146): counters (left group) + SAT
+    // HEALTH (right, bordered child) — Panel 1's legs / PASS HISTORY
+    // split mirrored here. The health box is exactly the counter
+    // block's height, so the HTTP LOG box below keeps its frozen
+    // geometry (acceptance: no disruption to the log streams).
+    const float line_h = ImGui::GetTextLineHeightWithSpacing();
+    const float cols_h = 7.0f * line_h; // Status + 6 counters
     char line[48];
+    ImGui::BeginGroup();
     ImGui::TextUnformatted("Status:");
     ImGui::SameLine();
     ImGui::SetCursorPosX(20.0f + ImGui::CalcTextSize("Sig verify fail:").x);
@@ -766,6 +787,56 @@ void render_panel2() {
     ImGui::TextUnformatted(line);
     std::snprintf(line, sizeof(line), "Receipts SENT:  %ld", g_service.receipts_dispatched);
     ImGui::TextUnformatted(line);
+    ImGui::EndGroup();
+
+    // VOID-146: SAT HEALTH — live constellation snapshot keyed by
+    // APID (100 = Sat A, 101 = Sat B). In-place upsert: one row per
+    // APID, never duplicated, dynamic on a new APID's first frame.
+    // Freshness is computed against the record's own gateway wall
+    // clock (received_at_ms), so a UI restart can never make stale
+    // data look live. Spec thresholds: ≤35 s [OK] · ≤70 s [STALE] ·
+    // else [LOST], recomputed every frame.
+    ImGui::SameLine();
+    const float health_w = ImGui::GetWindowContentRegionMax().x -
+                           ImGui::GetCursorPosX();
+    ImGui::PushStyleColor(ImGuiCol_ChildBg, kLogBg);
+    ImGui::PushStyleColor(ImGuiCol_Border, kLogBorder);
+    ImGui::BeginChild("SatHealth", ImVec2(health_w, cols_h), true);
+    ImGui::TextDisabled("SAT HEALTH");
+    if (g_heartbeats.node_count == 0) {
+        ImGui::TextDisabled("-- awaiting first heartbeat --");
+    }
+    const long long now_ms =
+        static_cast<long long>(std::time(nullptr)) * 1000LL;
+    for (std::size_t i = 0; i < g_heartbeats.node_count; ++i) {
+        const hb_node_t& n = g_heartbeats.nodes[i];
+        if (!n.used) {
+            continue;
+        }
+        char row[48];
+        std::snprintf(row, sizeof(row), "#%d %-5s %4.2fV %6.1fC",
+                      n.apid, hb_role_tag(n.apid),
+                      static_cast<double>(n.vbatt_mv) / 1000.0,
+                      static_cast<double>(n.temp_c) / 100.0);
+        ImGui::TextUnformatted(row);
+        long long elapsed_s = (now_ms - n.last_rx_ms) / 1000LL;
+        if (elapsed_s < 0) {
+            elapsed_s = 0; // clock skew — clamp to OK side
+        }
+        const bool ok = (elapsed_s <= 35);
+        const bool stale = (elapsed_s <= 70);
+        char state[24];
+        std::snprintf(state, sizeof(state), "%s %llus",
+                      ok ? "[OK]" : stale ? "[STALE]" : "[LOST]",
+                      static_cast<unsigned long long>(elapsed_s));
+        ImGui::SameLine(ImGui::GetWindowContentRegionMax().x -
+                       ImGui::CalcTextSize(state).x);
+        ImGui::TextColored(ok ? kStateOk : stale ? kTextAmber : kDangerActive,
+                           "%s", state);
+    }
+    ImGui::EndChild();
+    ImGui::PopStyleColor(2);
+
     ImGui::TextDisabled("HTTP LOG (live)");
     clear_button("CLEAR##http", &g_ring_http, g_http_text);
     // Pinned column header (gin request-line widths) — stays visible
@@ -1063,6 +1134,59 @@ void render_side_panel() {
             }
             log_box("DebugLog", g_debug_text,
                     ImGui::GetContentRegionAvail().y, true);
+            ImGui::EndTabItem();
+        }
+        if (ImGui::BeginTabItem("HEARTBEATS")) {
+            ImGui::TextDisabled("HEARTBEAT HISTORY — gateway-validated frames (live)");
+            // View-local CLEAR (spec): flush the history rows only.
+            // The Panel-2 SAT HEALTH table and heartbeats.json itself
+            // are untouched — new heartbeats keep arriving into both.
+            ImGui::SameLine(ImGui::GetWindowContentRegionMax().x -
+                            ImGui::CalcTextSize("CLEAR").x);
+            if (ImGui::SmallButton("CLEAR##hbhist")) {
+                heartbeats_clear_view(&g_heartbeats);
+            }
+            // Pinned header stays visible while the table scrolls.
+            ImGui::TextDisabled("%s", kHbLogHeader);
+            // VOID-146: append-only history, newest at bottom. Per-row
+            // rendering (ImGui clips off-screen rows the way the PASS
+            // HISTORY list does — no per-frame snapshot blob to rebuild
+            // for 1000 rows). Tail follows only while the operator is
+            // already at the bottom; scrolling up cancels the pin
+            // (VOID-145 log_box pattern, inlined for per-row items).
+            ImGui::PushStyleColor(ImGuiCol_ChildBg, kLogBg);
+            ImGui::PushStyleColor(ImGuiCol_Border, kLogBorder);
+            ImGui::BeginChild("HbTable",
+                              ImVec2(0.0f, ImGui::GetContentRegionAvail().y),
+                              true, ImGuiWindowFlags_HorizontalScrollbar);
+            const std::size_t cnt = g_heartbeats.hist_count;
+            const bool pin = (cnt > 0) &&
+                (ImGui::GetScrollY() >= ImGui::GetScrollMaxY());
+            if (cnt == 0) {
+                ImGui::TextDisabled("-- no heartbeats yet --");
+            } else {
+                const std::size_t start =
+                    (g_heartbeats.hist_next + kHbHistMax - cnt) % kHbHistMax;
+                for (std::size_t i = 0; i < cnt; ++i) {
+                    const hb_rec_t& r =
+                        g_heartbeats.hist[(start + i) % kHbHistMax];
+                    char row[96];
+                    std::snprintf(row, sizeof(row),
+                        "%s  #%-3d %-5s %5.2fV %6.1fC %3u %8uPa %10.6f %10.6f",
+                        r.t, r.apid, hb_role_tag(r.apid),
+                        static_cast<double>(r.vbatt_mv) / 1000.0,
+                        static_cast<double>(r.temp_c) / 100.0,
+                        r.sat_lock, r.pressure_pa,
+                        static_cast<double>(r.lat_fixed) / 10000000.0,
+                        static_cast<double>(r.lon_fixed) / 10000000.0);
+                    ImGui::TextUnformatted(row);
+                }
+            }
+            if (pin) {
+                ImGui::SetScrollHereY(1.0f);
+            }
+            ImGui::EndChild();
+            ImGui::PopStyleColor(2);
             ImGui::EndTabItem();
         }
         ImGui::EndTabBar();
